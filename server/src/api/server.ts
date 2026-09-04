@@ -28,7 +28,12 @@ export function buildServer(): BuiltServer {
   const repo = new Repository(db);
   const paymentAdapter = createPaymentAdapter(config.razorpay);
   const llmAdapter = createLlmAdapter(config.openRouter);
-  const app = createApp({ repo, paymentAdapter, llmAdapter });
+  const app = createApp({
+    repo,
+    paymentAdapter,
+    llmAdapter,
+    ...(config.reviewSecret ? { reviewSecret: config.reviewSecret } : {}),
+  });
   return { app, config, db };
 }
 

@@ -113,6 +113,7 @@ app runs fully in deterministic demo / simulation mode.
 | `RAZORPAY_KEY_ID` | No | _(unset)_ | Razorpay key id (only for `live`). |
 | `RAZORPAY_KEY_SECRET` | No | _(unset)_ | Razorpay key secret (only for `live`). |
 | `RAZORPAY_WEBHOOK_SECRET` | No | _(unset)_ | Secret used to verify webhook signatures in `live` mode. |
+| `REVIEW_SECRET` | No | _(unset)_ | Optional shared secret guarding the mutating endpoints (`/review`, `/explain`). Unset = open demo; when set, those routes require `x-review-secret` or `Authorization: Bearer`. |
 
 ### Where to put the OpenRouter key
 
@@ -149,6 +150,13 @@ LLM.
 | `POST /api/customers/:id/review` | Merchant controls: `approve_blacklist`, `reject_blacklist`, `reinstate_access`, `restore_access`. Writes the audit log. |
 | `POST /api/webhooks/razorpay` | Ingests (signature-verified) payment events and re-evaluates. |
 
+> **Guarding the mutating endpoints.** `/explain` and `/review` are the merchant
+> trust boundary that keeps blacklist **human-approved** (the engine only ever
+> *recommends* it). They are open by default so the zero-config demo works; set
+> `REVIEW_SECRET` to require a matching `x-review-secret` header (or
+> `Authorization: Bearer <secret>`) on those two routes. The comparison is
+> constant-time and the guard is a no-op when the secret is unset.
+
 ## Demo walkthrough — the 7 scenarios
 
 Run `npm run seed`, then open the dashboard and the customer detail pages. Each
@@ -173,6 +181,16 @@ value-extraction that is **suspended with a blacklist recommendation** for human
 review. Open each customer to see the evidence, recommended action, timeline,
 and the **Explain** / review controls.
 
+> **Pattern over score.** The decision is deliberately **not** a pure function
+> of the numeric risk band. A strong, unambiguous behavioural pattern (e.g.
+> repeated cancel-before-renewal) can drive **RESTRICT** even while the numeric
+> score sits in the *low* band — this is scenario 4 (Ishita Rao), which
+> restricts at risk ≈ 31. The band summarises weighted, recency-decayed
+> **payment/trust signals**; behavioural patterns are evaluated **alongside** it,
+> so a low band next to a RESTRICT outcome is intended, not a contradiction. The
+> risk score is a bounded 0–100 heuristic for banding, **not** a calibrated
+> probability.
+
 ## Running the tests
 
 ```bash
@@ -195,5 +213,8 @@ webhook HMAC verification), and HTTP end-to-end tests via supertest.
   heuristic over the latest decision and upcoming renewals.
 - **Demo-scale data.** Ships with 7 hand-authored scenarios in a local SQLite
   file; it is not backed by a production datastore or real customer volume.
-- **Not production-hardened.** No authentication, authorization, rate limiting,
-  multi-tenancy or migrations-at-scale. Intended as a demonstrable prototype.
+- **Not production-hardened.** No rate limiting, multi-tenancy or
+  migrations-at-scale. The mutating endpoints (`/review`, `/explain`) support an
+  **optional** shared-secret guard via `REVIEW_SECRET` (off by default for the
+  demo); there is otherwise no full authentication / authorization or
+  per-merchant identity. Intended as a demonstrable prototype.

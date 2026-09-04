@@ -206,6 +206,60 @@ describe("POST /api/webhooks/razorpay — signature verification & idempotency",
     expect(replay.body.status).toBe("duplicate");
     expect(replay.body.eventId).toBe(eventId);
   });
+
+  it("does NOT poison idempotency: a malformed body then a retry of the same event id is processed", async () => {
+    // A validly-signed but non-JSON body fails to parse (400). The event id
+    // must NOT be recorded, so a Razorpay retry of the SAME id must be
+    // processed rather than silently deduped.
+    const eventId = `evt_e2e_badjson_${Date.now()}`;
+    const badBody = "this-is-not-json{";
+    const badSig = computeWebhookSignature(badBody, WEBHOOK_SECRET);
+    const bad = await postWebhook(badBody, badSig, eventId);
+    expect(bad.status).toBe(400);
+
+    // Retry the same event id with a well-formed, linkable body.
+    const payload = {
+      entity: "event",
+      event: "payment.captured",
+      payload: {
+        payment: {
+          entity: { id: "pay_retry_1", amount: 49900, currency: "INR", notes: { customer_id: "cust_transient" } },
+        },
+      },
+    };
+    const goodBody = JSON.stringify(payload);
+    const goodSig = computeWebhookSignature(goodBody, WEBHOOK_SECRET);
+    const retry = await postWebhook(goodBody, goodSig, eventId);
+    expect(retry.status).toBe(200);
+    expect(retry.body.status).toBe("processed");
+  });
+
+  it("does NOT poison idempotency: an unknown event then a retry of the same event id is processed", async () => {
+    // A validly-signed body carrying an unrecognised event name throws in
+    // parseEvent (500). The id must not be recorded, so a corrected retry of
+    // the same id must still be processed.
+    const eventId = `evt_e2e_unknown_${Date.now()}`;
+    const unknownPayload = { entity: "event", event: "payment.definitely_not_real", payload: {} };
+    const unknownBody = JSON.stringify(unknownPayload);
+    const unknownSig = computeWebhookSignature(unknownBody, WEBHOOK_SECRET);
+    const unknown = await postWebhook(unknownBody, unknownSig, eventId);
+    expect(unknown.status).toBe(500);
+
+    const payload = {
+      entity: "event",
+      event: "payment.captured",
+      payload: {
+        payment: {
+          entity: { id: "pay_retry_2", amount: 49900, currency: "INR", notes: { customer_id: "cust_transient" } },
+        },
+      },
+    };
+    const goodBody = JSON.stringify(payload);
+    const goodSig = computeWebhookSignature(goodBody, WEBHOOK_SECRET);
+    const retry = await postWebhook(goodBody, goodSig, eventId);
+    expect(retry.status).toBe(200);
+    expect(retry.body.status).toBe("processed");
+  });
 });
 
 describe("POST /api/customers/:id/review — updates access + writes audit_log", () => {
@@ -255,5 +309,72 @@ describe("POST /api/customers/:id/review — updates access + writes audit_log",
       .post("/api/customers/cust_cycling/review")
       .send({ action: "delete_everything" });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("optional REVIEW_SECRET guard on the mutating endpoints", () => {
+  const SECRET = "review_shared_secret_123";
+  let guardedDb: DB;
+  let guardedApp: Express;
+
+  beforeAll(() => {
+    guardedDb = openDatabase(":memory:");
+    const guardedRepo = new Repository(guardedDb);
+    seedDatabase(guardedRepo, guardedDb);
+    guardedApp = createApp({
+      repo: guardedRepo,
+      paymentAdapter: new SimulationRazorpayAdapter(RZP_CONFIG),
+      llmAdapter: new DeterministicExplainer(),
+      reviewSecret: SECRET,
+    });
+  });
+
+  afterAll(() => {
+    guardedDb.close();
+  });
+
+  it("read endpoints stay open even when a secret is configured", async () => {
+    const res = await request(guardedApp).get("/api/customers");
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects /review without the secret (401)", async () => {
+    const res = await request(guardedApp)
+      .post("/api/customers/cust_extraction/review")
+      .send({ action: "approve_blacklist" });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects /review with a wrong secret (401)", async () => {
+    const res = await request(guardedApp)
+      .post("/api/customers/cust_extraction/review")
+      .set("x-review-secret", "wrong")
+      .send({ action: "approve_blacklist" });
+    expect(res.status).toBe(401);
+  });
+
+  it("accepts /review with the correct x-review-secret header", async () => {
+    const res = await request(guardedApp)
+      .post("/api/customers/cust_extraction/review")
+      .set("x-review-secret", SECRET)
+      .send({ action: "approve_blacklist" });
+    expect(res.status).toBe(200);
+    expect(res.body.accessState).toBe("BLACKLIST_RECOMMENDED");
+  });
+
+  it("accepts /review with an Authorization: Bearer <secret> header", async () => {
+    const res = await request(guardedApp)
+      .post("/api/customers/cust_cycling/review")
+      .set("authorization", `Bearer ${SECRET}`)
+      .send({ action: "reinstate_access" });
+    expect(res.status).toBe(200);
+    expect(res.body.accessState).toBe("GRACE");
+  });
+
+  it("guards /explain the same way (401 without the secret)", async () => {
+    const res = await request(guardedApp)
+      .post("/api/customers/cust_transient/explain")
+      .send({});
+    expect(res.status).toBe(401);
   });
 });

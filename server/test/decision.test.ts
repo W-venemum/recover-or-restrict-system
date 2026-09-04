@@ -184,4 +184,32 @@ describe("next-best recovery action selection & escalation", () => {
     const restrict = decideWith({ risk: risk(72, "high") });
     expect(restrict.recommendedAction).toBeUndefined();
   });
+
+  it("INTERVENE with no active failure -> payment_reminder (low-friction first touch)", () => {
+    // Medium risk, no failure classification: the softest nudge is a reminder.
+    const d = decideWith({ risk: risk(45, "medium") });
+    expect(d.outcome).toBe("INTERVENE");
+    expect(d.recommendedAction).toBe("payment_reminder");
+  });
+
+  it("does not repeat a payment_reminder that was already sent", () => {
+    const d = decideWith({
+      risk: risk(45, "medium"),
+      accessHistory: { attemptedActions: ["payment_reminder"], failedRetries: 0 },
+    });
+    expect(d.outcome).toBe("INTERVENE");
+    expect(d.recommendedAction).not.toBe("payment_reminder");
+  });
+
+  it("insufficient funds -> limited_grace_period after delayed_retry AND an alternate route were both tried", () => {
+    const d = decideWith({
+      risk: risk(10, "low"),
+      failureClassification: failure("insufficient_funds"),
+      accessHistory: {
+        attemptedActions: ["delayed_retry", "upi_payment_link"],
+        failedRetries: 2,
+      },
+    });
+    expect(d.recommendedAction).toBe("limited_grace_period");
+  });
 });

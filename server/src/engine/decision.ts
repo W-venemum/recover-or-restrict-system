@@ -144,7 +144,7 @@ export function decide(input: DecisionInput): Decision {
   let expectedRecoveryOutcome: string | undefined;
 
   if (outcome === "RECOVER" || outcome === "INTERVENE") {
-    const chosen = chooseRecoveryAction(failureClass, accessHistory);
+    const chosen = chooseRecoveryAction(failureClass, accessHistory, outcome);
     recommendedAction = chosen.action;
     expectedRecoveryOutcome = chosen.expectation;
     evidence.push({
@@ -184,9 +184,22 @@ interface ChosenAction {
 function chooseRecoveryAction(
   failureClass: FailureClassification["failureClass"] | undefined,
   history: AccessHistory,
+  outcome: Decision["outcome"],
 ): ChosenAction {
   const tried = new Set(history.attemptedActions);
   const escalate = history.failedRetries >= 1;
+
+  // INTERVENE with no specific failure to remedy (concerning risk/pattern but
+  // no active payment failure this episode): a low-friction payment reminder is
+  // the right first touch before any technical retry or restriction.
+  if (outcome === "INTERVENE" && !failureClass && !tried.has("payment_reminder")) {
+    return {
+      action: "payment_reminder",
+      expectation:
+        "Send a friendly payment reminder as a low-friction first nudge before any retry or restriction.",
+      confidence: 0.65,
+    };
+  }
 
   switch (failureClass) {
     case "invalid_or_expired_method":
@@ -206,6 +219,20 @@ function chooseRecoveryAction(
       };
 
     case "insufficient_funds":
+      // Genuine payer who has already tried a delayed retry AND an alternate
+      // route without clearing: extend a short grace period rather than cut a
+      // genuine customer off while they arrange funds.
+      if (
+        (tried.has("delayed_retry") || escalate) &&
+        (tried.has("upi_payment_link") || tried.has("alternate_payment_method"))
+      ) {
+        return {
+          action: "limited_grace_period",
+          expectation:
+            "A delayed retry and an alternate route have both been tried; extend a short grace period so a genuine payer keeps access while arranging funds.",
+          confidence: 0.65,
+        };
+      }
       if (tried.has("delayed_retry") || escalate) {
         return {
           action: "upi_payment_link",

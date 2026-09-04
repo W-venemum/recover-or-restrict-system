@@ -12,6 +12,7 @@
  * break the signature).
  */
 
+import { timingSafeEqual } from "node:crypto";
 import express, {
   type Express,
   type NextFunction,
@@ -35,6 +36,14 @@ export interface AppDependencies {
   repo: Repository;
   paymentAdapter: PaymentAdapter;
   llmAdapter: LlmAdapter;
+  /**
+   * Optional shared secret guarding the mutating endpoints (merchant review and
+   * explain). When set, those routes require a matching `x-review-secret`
+   * header (or `Authorization: Bearer <secret>`); when absent (the default) the
+   * routes stay open so the zero-config demo works out of the box. This gates
+   * the merchant-review trust boundary that keeps blacklist human-approved.
+   */
+  reviewSecret?: string;
 }
 
 /** A typed async route handler whose rejections are forwarded to Express. */
@@ -58,6 +67,35 @@ class HttpError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+/**
+ * Build a guard for mutating endpoints. When no secret is configured the guard
+ * is a no-op (open demo mode). When a secret IS configured, the request must
+ * present it via `x-review-secret` or `Authorization: Bearer <secret>`; the
+ * comparison is timing-safe. Missing / wrong secret -> 401.
+ */
+function makeReviewGuard(secret: string | undefined) {
+  if (!secret) {
+    return (_req: Request, _res: Response, next: NextFunction): void => next();
+  }
+  const expected = Buffer.from(secret);
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const headerSecret = req.header("x-review-secret");
+    const bearer = req.header("authorization");
+    const provided =
+      headerSecret ??
+      (bearer && bearer.startsWith("Bearer ") ? bearer.slice(7) : undefined);
+    const providedBuf = Buffer.from(provided ?? "");
+    const ok =
+      providedBuf.length === expected.length &&
+      timingSafeEqual(providedBuf, expected);
+    if (!ok) {
+      res.status(401).json({ error: "Missing or invalid review credentials" });
+      return;
+    }
+    next();
+  };
 }
 
 /**
@@ -172,8 +210,9 @@ const KIND_TO_PAYMENT_TYPE: Record<string, PaymentEventType> = {
 // ---------------------------------------------------------------------------
 
 export function createApp(deps: AppDependencies): Express {
-  const { repo, paymentAdapter, llmAdapter } = deps;
+  const { repo, paymentAdapter, llmAdapter, reviewSecret } = deps;
   const app = express();
+  const reviewGuard = makeReviewGuard(reviewSecret);
 
   // ---- Webhook route FIRST, with a raw body parser --------------------
   // Must be registered before the global express.json() so the raw bytes are
@@ -195,9 +234,13 @@ export function createApp(deps: AppDependencies): Express {
 
       const eventId = req.header("x-razorpay-event-id") ?? undefined;
 
-      // Idempotency: dedupe on the event id. If we have seen it, ack 200 but do
-      // not re-process.
-      if (eventId && !repo.markWebhookProcessed(eventId)) {
+      // Idempotency: dedupe on the event id. If we have already SUCCESSFULLY
+      // processed it, ack 200 without re-processing. Crucially we only *check*
+      // here — the id is recorded (via markWebhookProcessed) at the very end,
+      // after parsing and engine evaluation succeed. This way a body that fails
+      // to parse or an unknown event never marks the id seen, so a legitimate
+      // Razorpay retry of the same x-razorpay-event-id is still processed.
+      if (eventId && repo.hasProcessedWebhook(eventId)) {
         return res.status(200).json({ status: "duplicate", eventId });
       }
 
@@ -217,8 +260,10 @@ export function createApp(deps: AppDependencies): Express {
         extractCustomerId(payload);
 
       if (!customerId) {
-        // We still ack the webhook (already recorded for idempotency) but note
-        // that no customer could be linked.
+        // The event parsed to a known type but no customer could be linked.
+        // This is a terminal, successful handling of the event (there is
+        // nothing more to do on retry), so record the id for idempotency.
+        if (eventId) repo.markWebhookProcessed(eventId, normalised.event);
         repo.insertAuditEntry({
           action: "webhook_unlinked",
           detail: `Received ${normalised.event} but could not link a customer.`,
@@ -264,6 +309,10 @@ export function createApp(deps: AppDependencies): Express {
       });
 
       const { result } = reevaluateAndPersist(repo, customerId);
+
+      // Record the event id ONLY now that parsing, ingestion and engine
+      // evaluation have all succeeded, so failures never poison idempotency.
+      if (eventId) repo.markWebhookProcessed(eventId, normalised.event);
 
       return res.status(200).json({
         status: "processed",
@@ -409,6 +458,7 @@ export function createApp(deps: AppDependencies): Express {
   // ---- Explain: LLM-or-fallback explanation + drafted message ----------
   app.post(
     "/api/customers/:id/explain",
+    reviewGuard,
     asyncRoute(async (req, res) => {
       const { id } = customerIdParams.parse(req.params);
       const bundle = repo.getCustomerWithEvents(id);
@@ -456,6 +506,7 @@ export function createApp(deps: AppDependencies): Express {
   // ---- Review: merchant approve / appeal controls ----------------------
   app.post(
     "/api/customers/:id/review",
+    reviewGuard,
     asyncRoute(async (req, res) => {
       const { id } = customerIdParams.parse(req.params);
       const body = reviewBody.parse(req.body ?? {});

@@ -138,19 +138,59 @@ function buildRiskSignals(
 ): RiskSignal[] {
   const signals: RiskSignal[] = [];
 
+  // `paymentEvents` arrive here already sorted chronologically (see the caller
+  // in evaluateCustomer), so we can track whether each payment resolved an
+  // in-flight failure episode.
+  let failureOpen = false;
   for (const e of paymentEvents) {
     switch (e.type) {
       case "payment_failed":
         signals.push({ kind: "failed_payment", at: e.timestamp });
+        // A repeated attempt that failed again is a failed recovery attempt: a
+        // retry of an already-open failure episode did not clear. Note this is
+        // scored on TOP of the base failed_payment signal, capturing that the
+        // recovery effort itself failed (not just that a payment failed).
+        if (failureOpen || (typeof e.attempt === "number" && e.attempt >= 2)) {
+          signals.push({ kind: "recovery_failure", at: e.timestamp });
+        }
+        failureOpen = true;
         break;
       case "payment_succeeded":
         signals.push({ kind: "successful_payment", at: e.timestamp });
+        // A success that clears a preceding failure is a genuine recovery and
+        // earns a trust credit (negative weight), so recovered customers are
+        // not penalised for the failures that preceded the recovery.
+        if (failureOpen) {
+          signals.push({ kind: "recovery_success", at: e.timestamp });
+          failureOpen = false;
+        }
         break;
       case "autopay_cancelled":
         signals.push({ kind: "autopay_cancelled", at: e.timestamp });
         break;
       default:
         break;
+    }
+  }
+
+  // Unpaid renewals: renewals that fell due without a corresponding successful
+  // payment. This mirrors the renewal_avoidance pattern detector's own count so
+  // the same signal that drives pattern severity also reaches the risk score.
+  const renewalDue = behaviouralEvents.filter((e) => e.type === "renewal_due");
+  if (renewalDue.length > 0) {
+    const succeededCount = paymentEvents.filter(
+      (e) => e.type === "payment_succeeded",
+    ).length;
+    let unpaid = Math.max(renewalDue.length - succeededCount, 0);
+    // Attribute each unpaid renewal to the most recent renewal_due events (the
+    // ones most likely still unpaid), so recency decay is applied correctly.
+    const sortedRenewals = renewalDue
+      .slice()
+      .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+    for (const r of sortedRenewals) {
+      if (unpaid <= 0) break;
+      signals.push({ kind: "unpaid_renewal", at: r.timestamp });
+      unpaid -= 1;
     }
   }
 

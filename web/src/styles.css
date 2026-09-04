@@ -471,6 +471,19 @@ code {
   font-size: 11px;
 }
 
+/* Clarifying note (e.g. pattern-over-band explainer) */
+.note {
+  margin: -8px 0 20px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--intervene);
+  background: var(--intervene-bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* Key-value list */
 .kv {
   display: grid;

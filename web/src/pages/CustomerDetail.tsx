@@ -75,6 +75,13 @@ export function CustomerDetail({ id }: { id: string }) {
 
   const blacklist = data.blacklistRecommended;
 
+  // Pattern-over-band: a strong behavioural pattern can drive RESTRICT/SUSPEND
+  // even when the numeric risk band is low/medium. Surface a short note so a
+  // low band next to a restrictive outcome reads as intended, not a bug.
+  const restrictive = data.decision === "RESTRICT" || data.decision === "SUSPEND";
+  const patternOverBand =
+    restrictive && (data.riskBand === "low" || data.riskBand === "medium");
+
   return (
     <div className="page">
       <div className="page-head">
@@ -124,6 +131,19 @@ export function CustomerDetail({ id }: { id: string }) {
           </div>
         </div>
       </section>
+
+      {patternOverBand ? (
+        <p className="note">
+          <strong>Pattern over score:</strong> a strong behavioural pattern (see
+          the evidence below) drove this <strong>{data.decision}</strong> outcome
+          independently of the numeric risk band, which is{" "}
+          <strong>{data.riskBand}</strong>. The score summarises weighted,
+          recency-decayed payment/trust signals and is a bounded 0–100 heuristic
+          for banding, not a calibrated probability; behavioural patterns are
+          evaluated alongside it, so a low band next to a restrictive decision is
+          intended.
+        </p>
+      ) : null}
 
       <div className="two-col">
         <section className="card">

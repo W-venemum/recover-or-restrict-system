@@ -34,6 +34,12 @@ export interface AppConfig {
   databasePath: string;
   openRouter: OpenRouterConfig;
   razorpay: RazorpayConfig;
+  /**
+   * Optional shared secret guarding the mutating endpoints (merchant review /
+   * explain). Absent by default so the demo runs open; when set, those routes
+   * require the secret. Never throws when missing.
+   */
+  reviewSecret?: string;
 }
 
 function readString(name: string): string | undefined {
@@ -91,11 +97,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       mode: razorpayMode,
     };
 
+    const reviewSecret = readString("REVIEW_SECRET");
+
     return {
       port: readNumber("PORT", DEFAULT_PORT),
       databasePath: readString("DATABASE_PATH") ?? DEFAULT_DATABASE_PATH,
       openRouter,
       razorpay,
+      ...(reviewSecret ? { reviewSecret } : {}),
     };
   } finally {
     if (env !== process.env) {
