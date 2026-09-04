@@ -10,6 +10,7 @@
     "dev": "node --watch --experimental-strip-types src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "migrate": "node --experimental-strip-types src/db/migrate.ts",
     "seed": "node --experimental-strip-types src/seed/run.ts"
   },
   "dependencies": {

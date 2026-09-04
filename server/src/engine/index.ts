@@ -30,6 +30,7 @@ export * from "./risk.js";
 export * from "./patterns.js";
 export * from "./decision.js";
 export * from "./accessState.js";
+export * from "./revenue.js";
 
 export interface EvaluateInput {
   customer: Customer;
