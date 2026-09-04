@@ -6,7 +6,7 @@
  * runs with zero credentials), builds the Express app and starts listening.
  */
 
-import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
 import path from "node:path";
 import type { Express } from "express";
 import { createPaymentAdapter } from "../adapters/razorpay.js";
@@ -51,16 +51,26 @@ export function start(): void {
 }
 
 // Start when executed directly (both raw `.ts` via node and compiled `dist`).
-// Compare resolved filesystem paths rather than raw strings so detection works
-// on Windows too, where `import.meta.url` is a file:// URL and
-// `process.argv[1]` is a native (backslash) path. A direct `===` comparison
-// would always be false there and the server would never start.
+//
+// Detection normalises BOTH sides to a canonical `file://` URL and compares
+// those, rather than comparing raw strings or resolved native paths. This is
+// the robust cross-platform idiom:
+//   - `process.argv[1]` is a native filesystem path (backslashes on Windows,
+//     and possibly a relative path, since the dev script invokes
+//     `... src/api/server.ts`). `path.resolve` makes it absolute and
+//     `pathToFileURL(...).href` encodes it exactly the way Node builds
+//     `import.meta.url` (forward slashes, percent-encoding, `file:///C:/...`).
+//   - Comparing native paths with `===` is fragile on Windows because the
+//     drive letter case can differ (`C:\` vs `c:\`) and because the module may
+//     be resolved through a custom loader hook whose URL casing/format need
+//     not match `argv[1]` byte-for-byte. Comparing canonical file URLs avoids
+//     both the separator and drive-case pitfalls.
 const isDirectExecution = (): boolean => {
   const entry = process.argv[1];
   if (!entry) {
     return false;
   }
-  return path.resolve(fileURLToPath(import.meta.url)) === path.resolve(entry);
+  return pathToFileURL(path.resolve(entry)).href === import.meta.url;
 };
 
 if (isDirectExecution()) {
