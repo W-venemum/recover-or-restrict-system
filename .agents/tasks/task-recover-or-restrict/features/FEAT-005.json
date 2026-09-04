@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-005",
+  "type": "feat",
+  "description": "React (Vite) merchant dashboard + polish + README + .env.example (build-priority items 9 UI, 12). Builds the polished dashboard UI consuming the API, the customer detail page with explainability and review/appeal controls, and finishes documentation. Depends on FEAT-003 (API).",
+  "status": "pending",
+  "steps": [
+    "Create web/ workspace: Vite + React + TypeScript. package.json, tsconfig, vite config with a dev proxy so /api -> backend (PORT). Install react, react-dom, vite, typescript, @types.",
+    "Dashboard page: total subscription revenue, recovered revenue, revenue at risk, pending recovery, lost revenue, recovery rate, customer risk distribution (low/medium/high), restricted/suspended accounts, recent recovery events. Clean, readable layout (cards + simple charts/bars, no heavy chart lib required).",
+    "Customer list + Customer detail page: subscription info, payment history, behavioural timeline, Trust/Risk score with band, evidence list (the explainable reasons), recommended recovery action + expected outcome, current access state, and review/appeal controls (approve blacklist recommendation, reinstate/restore access) wired to POST /api/customers/:id/review. An 'Explain' button calls /explain to show the LLM-or-fallback narrative + drafted recovery message.",
+    "Make the demo obviously show RECOVER vs RESTRICT/SUSPEND: color-code outcome/state, and clearly surface that scenario 7 is a legitimate repeated-failure RECOVER (not blacklist) vs scenario 6 SUSPEND + blacklist-recommended.",
+    "Add root README.md: product summary (accurate, no overstated AI/ML/Razorpay claims), architecture overview (modules: domain, engine, adapters, db, api, web), setup (npm install, .env from .env.example, npm run seed, npm run dev for server + web), required env vars table, WHERE to put OPENROUTER_API_KEY (in .env), how the deterministic demo mode works with no key, Razorpay simulation/test mode + webhook verification note, demo walkthrough of the 7 scenarios, running tests, and Known Limitations.",
+    "Add .env.example at repo root with OPENROUTER_API_KEY=PASTE_YOUR_OPENROUTER_API_KEY_HERE, OPENROUTER_MODEL=..., OPENROUTER_BASE_URL, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET, RAZORPAY_MODE=simulation, PORT, DATABASE_PATH. Confirm .gitignore excludes .env and *.db.",
+    "Add convenient root scripts (e.g. `npm run dev` running server, `npm run dev:web`, and a `build` that builds both workspaces)."
+  ],
+  "acceptance_criteria": [
+    "`npm run build` builds BOTH server (tsc) and web (vite build) with no errors",
+    "web dev server renders the dashboard and customer detail against the running API",
+    "README documents setup, env vars, architecture, demo instructions, where to put the OpenRouter key, and limitations, with no overstated claims",
+    ".env.example present with all required vars incl. the OPENROUTER_API_KEY placeholder; .env and *.db are gitignored"
+  ],
+  "verification": [
+    "Run `npm run build` and confirm both workspaces build",
+    "Start server (seeded) + web dev server and load the dashboard + a customer detail page to confirm data renders and review controls call the API",
+    "Confirm `git status` shows no .env or .db files would be tracked"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

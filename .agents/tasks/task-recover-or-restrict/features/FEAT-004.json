@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-004",
+  "type": "test",
+  "description": "Comprehensive automated tests (build-priority item 11). Unit tests for classifier, risk engine, behavioural patterns, decision engine, access-state transitions, and recovery-action selection; adapter tests for Razorpay HMAC signature verification and OpenRouter deterministic fallback; and integration/e2e tests (supertest) for the major API flows including the 7 seeded scenarios and the webhook path. Tests must be meaningful (fail if the covered logic is reverted). Depends on FEAT-001/002/003.",
+  "status": "pending",
+  "steps": [
+    "server/test/classifier.test.ts: assert each realistic failure reason maps to the correct FailureClass and that a single transient failure is recoverable (does not by itself produce high risk / abuse).",
+    "server/test/risk.test.ts: assert weighted+decayed scoring - e.g. many OLD failures score lower than the same number of RECENT ones (recency decay), confidence rises with more evidence, and each active signal yields an evidence entry. Assert bands.",
+    "server/test/patterns.test.ts: feed event sequences that exhibit cancellation cycling, payment-failure cycling, renewal avoidance, grace-period extraction, and cancel->use->resubscribe; assert each detector fires with evidence and does NOT fire on benign sequences.",
+    "server/test/decision.test.ts: table-driven - genuine transient+low risk -> RECOVER; concerning -> INTERVENE; repeated avoidance -> RESTRICT; high-confidence abuse -> SUSPEND + blacklist recommendation flag set; verify next-best action escalates based on prior failed attempts.",
+    "server/test/accessState.test.ts: assert full transition table incl. successful payment restoring access, and that BLACKLIST_RECOMMENDED is only ever a recommendation (never auto-applied without merchant review).",
+    "server/test/razorpay.test.ts: compute a real HMAC-SHA256 signature over a raw body with a secret and assert verifyWebhookSignature returns true; tamper body/signature -> false. Assert only real event names are handled.",
+    "server/test/openrouter.test.ts: with no OPENROUTER_API_KEY, assert explainDecision + draftRecoveryMessage return deterministic non-empty text derived from evidence and never throw.",
+    "server/test/revenue.test.ts: assert aggregates (revenue at risk, recovered, recovery rate, risk distribution, priority ordering) computed correctly from a fixture set.",
+    "server/test/api.e2e.test.ts (supertest): seed an in-memory/temp DB, then GET /api/dashboard, GET /api/customers, GET /api/customers/:id assert the 7 scenarios resolve to intended outcomes (esp. scenario 7 RECOVER-not-blacklist vs scenario 6 SUSPEND+blacklist-recommended). POST webhook with invalid signature -> 401, valid -> 200, replay same event id -> idempotent. POST /review approve/reinstate updates access + writes audit_log.",
+    "Ensure tests use a temporary/isolated DATABASE_PATH so they don't clobber the demo DB."
+  ],
+  "acceptance_criteria": [
+    "`npm test` runs vitest and ALL tests pass",
+    "Coverage spans classifier, risk, patterns, decision, access state, recovery selection, both adapters, revenue, and API e2e incl. webhook signature + idempotency",
+    "Tests are behavioural: reverting a rule in the engine causes a test to fail (no vacuous/static-only assertions)"
+  ],
+  "verification": [
+    "Run `npm test` and paste the full passing output"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

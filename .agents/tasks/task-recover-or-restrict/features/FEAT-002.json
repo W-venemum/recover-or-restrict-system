@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Persistence layer + adapters + revenue-at-risk engine (build-priority items 5-8). Adds SQLite persistence (better-sqlite3) for customers/subscriptions/events/decisions/audit trail, the Razorpay adapter (simulation/test mode by default + real webhook HMAC-SHA256 signature verification against the raw body + idempotency via x-razorpay-event-id, using only real Razorpay event names), the OpenRouter LLM adapter with a deterministic fallback so the app runs with NO api key, and the revenue-at-risk engine. Depends on FEAT-001 engine.",
+  "status": "pending",
+  "steps": [
+    "server/src/config.ts: load env via dotenv. Vars: PORT, DATABASE_PATH (default data/app.db), OPENROUTER_API_KEY (optional), OPENROUTER_MODEL (default a sensible OpenRouter model id), OPENROUTER_BASE_URL (default https://openrouter.ai/api/v1), RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET, RAZORPAY_MODE (default 'simulation'). Never throw if OpenRouter/Razorpay keys are missing - degrade to demo/simulation mode.",
+    "server/src/db/schema.ts + migrate.ts: create tables customers, subscriptions, payment_events, behavioural_events, decisions, audit_log, access_state_history, processed_webhooks (for idempotency). Use better-sqlite3 synchronous API. Provide a repository module server/src/db/repo.ts with typed CRUD + query helpers (get customer with all events, list customers with latest decision, insert audit entry).",
+    "server/src/adapters/razorpay.ts: define PaymentAdapter interface (verifyWebhookSignature(rawBody, signature): boolean, parseEvent(payload), createPaymentLink(...) simulated, retryCharge(...) simulated). Implement RazorpayAdapter: verifyWebhookSignature computes HMAC-SHA256 of the RAW request body with RAZORPAY_WEBHOOK_SECRET as key and compares (timing-safe) to X-Razorpay-Signature (this matches official Razorpay docs). Map only REAL Razorpay event names: payment.captured, payment.failed, payment.authorized, subscription.charged, subscription.pending, subscription.halted, subscription.cancelled, subscription.activated, subscription.completed. Add a SimulationRazorpayAdapter/mode used for the demo that generates plausible events without a live account. Document in code comments that no unsupported APIs are invented.",
+    "server/src/adapters/openrouter.ts: define LlmAdapter interface (explainDecision(decision, evidence): Promise<string>, draftRecoveryMessage(customer, decision): Promise<string>). Implement OpenRouterAdapter that POSTs to OPENROUTER_BASE_URL/chat/completions with OPENROUTER_MODEL when OPENROUTER_API_KEY is set. When no key present (or on error), fall back to a DeterministicExplainer that builds explanation + recovery message purely from the decision evidence. Selection is automatic based on config. Core decisions never depend on the LLM.",
+    "server/src/engine/revenue.ts: pure revenue-at-risk aggregation from subscriptions + decisions: total subscription revenue, recovered revenue, revenue at risk, pending recovery, lost revenue, recovery rate, customer risk distribution, restricted/suspended counts, highest-priority customers, predicted failures on upcoming renewals.",
+    "Add npm scripts in server package.json: migrate, and ensure data/ dir is created at runtime."
+  ],
+  "acceptance_criteria": [
+    "SQLite schema creates cleanly and repo functions round-trip data",
+    "RazorpayAdapter.verifyWebhookSignature returns true for a correctly HMAC-SHA256-signed raw body and false for a tampered body/signature",
+    "Only real Razorpay event names appear in the adapter mapping (no invented APIs)",
+    "OpenRouter adapter returns deterministic fallback text when OPENROUTER_API_KEY is unset, without throwing",
+    "revenue.ts returns all required aggregate metrics from a set of subscriptions/decisions"
+  ],
+  "verification": [
+    "Run `npm run build` and confirm compilation passes",
+    "Rely on FEAT-004 unit tests for signature verification and fallback behaviour"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

@@ -1,0 +1,7 @@
+{
+  "task_id": "task-recover-or-restrict",
+  "task_description": "Build RECOVER-OR-RESTRICT: an AI-assisted Subscription Revenue Recovery + Trust/Access Decision Engine. Deterministic core (classifier, weighted+decayed risk score, behavioural pattern detection, RECOVER/INTERVENE/RESTRICT/SUSPEND decision engine, adaptive access state machine, revenue-at-risk), SQLite persistence, Razorpay adapter (simulation + real HMAC-SHA256 webhook verification, real event names only), OpenRouter LLM adapter with deterministic fallback so the app runs with no API key, Express REST API, 7 seeded demo scenarios distinguishing genuine failure (RECOVER) from behavioural avoidance (RESTRICT/SUSPEND), a React merchant dashboard, comprehensive tests, and a README. Full-stack TypeScript npm-workspaces monorepo, zero external infra (SQLite).",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004", "FEAT-005"],
+  "blocked_reason": null
+}

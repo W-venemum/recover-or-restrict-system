@@ -1,0 +1,17 @@
+{
+  "name": "recover-or-restrict-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-assisted Subscription Revenue Recovery + Trust/Access Decision Engine",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace server",
+    "test": "npm run test --workspace server",
+    "dev": "npm run dev --workspace server",
+    "seed": "npm run seed --workspace server"
+  },
+  "license": "MIT"
+}

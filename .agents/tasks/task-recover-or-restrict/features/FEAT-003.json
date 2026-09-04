@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "REST API (Express) + demo seed data for all 7 scenarios (build-priority items 9-10 backend side). Exposes the decision engine and revenue metrics over HTTP, handles the Razorpay webhook endpoint with signature verification + idempotency, and seeds a SQLite DB with the 7 named scenarios that clearly distinguish genuine failure (RECOVER) from behavioural avoidance (RESTRICT/SUSPEND). Depends on FEAT-001 and FEAT-002.",
+  "status": "pending",
+  "steps": [
+    "server/src/api/app.ts: Express app with JSON parsing (BUT the webhook route must access the RAW body for HMAC verification - use express.raw for that route). Routes: GET /api/health, GET /api/dashboard (revenue-at-risk + risk distribution + recent recovery events), GET /api/customers (list with score/band/decision/access state), GET /api/customers/:id (subscription, payment history, behavioural timeline, risk score, evidence, recommended action, access state), POST /api/customers/:id/explain (returns LLM-or-fallback explanation + drafted recovery message), POST /api/customers/:id/review (merchant approve/appeal controls: approve blacklist recommendation, reinstate access - writes audit_log), POST /api/webhooks/razorpay (verify signature on raw body, dedupe via x-razorpay-event-id, ingest event, re-evaluate customer, persist decision + audit). Validate inputs with zod. Central error handler.",
+    "server/src/api/server.ts: bootstrap that runs migrations, wires config-selected adapters, starts listening on PORT.",
+    "server/src/seed/scenarios.ts + seed.ts: build and insert the 7 scenarios with realistic timelines: (1) Normal successful customer -> ACTIVE/RECOVER-not-needed low risk; (2) Genuine temporary failure -> recovered (transient failure then success -> RECOVER, access restored); (3) Recoverable needing alternate intervention (repeated insufficient_funds -> RECOVER with alternate_payment_method/upi_payment_link); (4) Repeated autopay cancellation near renewal -> RESTRICT; (5) Cancellation/resubscription cycling -> high risk INTERVENE/RESTRICT; (6) Repeated unpaid usage/value extraction -> SUSPEND + BLACKLIST_RECOMMENDED; (7) Legitimate repeated failures (e.g. expired card, bank outage, then genuine retries) -> RECOVER, explicitly NOT blacklist. Each scenario must produce the intended outcome deterministically through the engine.",
+    "Wire root/server npm scripts: `seed` (migrate + insert scenarios), `dev` (start server, e.g. via tsx watch), `start` (node dist).",
+    "Manual sanity: after seed + dev, GET /api/customers should return 7 customers whose decisions match the intended outcomes, and scenario 6 should carry a blacklist RECOMMENDATION flag while scenario 7 must NOT."
+  ],
+  "acceptance_criteria": [
+    "`npm run seed` populates the SQLite DB with exactly the 7 named scenarios",
+    "GET /api/dashboard returns revenue metrics and risk distribution",
+    "GET /api/customers/:id returns full explainable detail (evidence, recommended action, access state, timeline)",
+    "Webhook endpoint rejects requests with invalid signature (401) and dedupes repeated x-razorpay-event-id",
+    "Scenario 2/3/7 resolve to RECOVER; scenario 4/5 to RESTRICT/INTERVENE; scenario 6 to SUSPEND with blacklist recommendation; scenario 7 is RECOVER and NOT blacklist"
+  ],
+  "verification": [
+    "Run `npm run build` (typecheck passes)",
+    "Run `npm run seed` then start the server and curl GET /api/customers + GET /api/dashboard to confirm the 7 scenarios and metrics; confirm scenario outcomes match intended mapping",
+    "curl the webhook with a bad signature and confirm 401; with a valid HMAC signature confirm 200 and idempotent handling on replay"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
