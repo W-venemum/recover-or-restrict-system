@@ -1,7 +1,14 @@
 {
   "task_id": "task-recover-or-restrict",
   "task_description": "Build RECOVER-OR-RESTRICT: an AI-assisted Subscription Revenue Recovery + Trust/Access Decision Engine. Deterministic core (classifier, weighted+decayed risk score, behavioural pattern detection, RECOVER/INTERVENE/RESTRICT/SUSPEND decision engine, adaptive access state machine, revenue-at-risk), SQLite persistence, Razorpay adapter (simulation + real HMAC-SHA256 webhook verification, real event names only), OpenRouter LLM adapter with deterministic fallback so the app runs with no API key, Express REST API, 7 seeded demo scenarios distinguishing genuine failure (RECOVER) from behavioural avoidance (RESTRICT/SUSPEND), a React merchant dashboard, comprehensive tests, and a README. Full-stack TypeScript npm-workspaces monorepo, zero external infra (SQLite).",
-  "status": "in_progress",
+  "status": "completed",
   "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004", "FEAT-005"],
-  "blocked_reason": null
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "pass",
+    "docker_build": "skipped",
+    "summary": "npm run build builds both server (tsc) and web (vite) with zero errors. npm test: 10 vitest files, 133/133 tests pass (after review fixes: +17 tests). Test quality confirmed behavioural: risk.test.ts asserts 30-day half-life decay (~half score at one half-life), success/tenure credits, and bands; api.e2e.test.ts drives the real engine over the 7 seeded scenarios and asserts scenario 6 SUSPEND+blacklist vs scenario 7 RECOVER-not-blacklist, real HMAC-SHA256 webhook verification (401/200/duplicate replay), and DB-verified audit writes. These fail if the covered logic is reverted. No Dockerfile in repo, so docker_build skipped."
+  }
 }
