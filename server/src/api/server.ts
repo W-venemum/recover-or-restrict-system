@@ -6,6 +6,8 @@
  * runs with zero credentials), builds the Express app and starts listening.
  */
 
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import type { Express } from "express";
 import { createPaymentAdapter } from "../adapters/razorpay.js";
 import { createLlmAdapter } from "../adapters/openrouter.js";
@@ -49,6 +51,18 @@ export function start(): void {
 }
 
 // Start when executed directly (both raw `.ts` via node and compiled `dist`).
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Compare resolved filesystem paths rather than raw strings so detection works
+// on Windows too, where `import.meta.url` is a file:// URL and
+// `process.argv[1]` is a native (backslash) path. A direct `===` comparison
+// would always be false there and the server would never start.
+const isDirectExecution = (): boolean => {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+  return path.resolve(fileURLToPath(import.meta.url)) === path.resolve(entry);
+};
+
+if (isDirectExecution()) {
   start();
 }
