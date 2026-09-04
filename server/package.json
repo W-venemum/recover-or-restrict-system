@@ -7,11 +7,12 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "node --watch --experimental-strip-types src/index.ts",
+    "dev": "node --watch --experimental-strip-types --import ./src/register-ts.mjs src/api/server.ts",
+    "start": "node dist/api/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate": "node --experimental-strip-types src/db/migrate.ts",
-    "seed": "node --experimental-strip-types src/seed/run.ts"
+    "migrate": "node --experimental-strip-types --import ./src/register-ts.mjs src/db/migrate.ts",
+    "seed": "node --experimental-strip-types --import ./src/register-ts.mjs src/seed/seed.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
