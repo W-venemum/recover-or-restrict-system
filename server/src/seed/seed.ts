@@ -13,6 +13,8 @@
  * before re-seeding, so `npm run seed` is idempotent.
  */
 
+import { pathToFileURL } from "node:url";
+import path from "node:path";
 import { evaluateCustomer } from "../engine/index.js";
 import type { DB } from "../db/migrate.js";
 import { openDatabase } from "../db/migrate.js";
@@ -161,7 +163,29 @@ export function runSeed(): void {
   }
 }
 
-// Run when executed directly (raw `.ts` via node or compiled `dist`).
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run when executed directly (both raw `.ts` via node and compiled `dist`).
+//
+// Detection normalises BOTH sides to a canonical `file://` URL and compares
+// those, rather than comparing raw strings or resolved native paths. This is
+// the robust cross-platform idiom (same as `src/api/server.ts`):
+//   - `process.argv[1]` is a native filesystem path (backslashes on Windows,
+//     and possibly a relative path, since `npm run seed` invokes
+//     `... src/seed/seed.ts`). `path.resolve` makes it absolute and
+//     `pathToFileURL(...).href` encodes it exactly the way Node builds
+//     `import.meta.url` (forward slashes, percent-encoding, `file:///C:/...`).
+//   - Comparing `import.meta.url` (a `file://` URL) against
+//     `` `file://${process.argv[1]}` `` is fragile on Windows because the
+//     native path uses backslashes and may differ in drive-letter case, so the
+//     `===` is false and `runSeed()` never fires. Comparing canonical file
+//     URLs avoids both the separator and drive-case pitfalls.
+const isDirectExecution = (): boolean => {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+  return pathToFileURL(path.resolve(entry)).href === import.meta.url;
+};
+
+if (isDirectExecution()) {
   runSeed();
 }
