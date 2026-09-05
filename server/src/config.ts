@@ -99,10 +99,7 @@ const OPENROUTER_API_KEY_PLACEHOLDER = "PASTE_YOUR_OPENROUTER_API_KEY_HERE";
  */
 function isPlaceholderOpenRouterKey(value: string): boolean {
   const normalised = value.trim().toLowerCase();
-  return (
-    normalised === OPENROUTER_API_KEY_PLACEHOLDER.toLowerCase() ||
-    normalised.includes("paste_your")
-  );
+  return normalised === OPENROUTER_API_KEY_PLACEHOLDER.toLowerCase();
 }
 
 /** A real, current OpenRouter model id used as the sensible default. */
