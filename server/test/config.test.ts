@@ -83,13 +83,93 @@ describe("config: cwd-independent repo-root .env loading", () => {
   });
 
   it("picks up values from the repo-root .env regardless of cwd", () => {
-    // These non-secret values are present in the repo-root .env. If dotenv were
-    // (incorrectly) resolving from cwd=server/, no .env would be found there.
-    const fromServer = loadConfigFrom(serverDir);
-    expect(fromServer.openRouterBaseUrl).toBe("https://openrouter.ai/api/v1");
-    expect(fromServer.openRouterModel).toBe("openai/gpt-4o-mini");
-    expect(fromServer.port).toBe(4000);
-    expect(fromServer.databasePath).toBe("data/app.db");
+    // Self-contained: write KNOWN, non-secret values into a test-controlled
+    // root `.env` fixture and assert the config loads exactly those. This
+    // proves cwd-independent root-`.env` loading WITHOUT coupling the test to
+    // the developer's personal repo-root `.env` contents.
+    //
+    // The sandbox is created INSIDE the repo so Node still resolves the
+    // `dotenv` dependency via upward node_modules lookup, while the copied
+    // config module computes its OWN repo root as the sandbox root (two levels
+    // up from the copied server/src). Running with cwd=<sandbox>/server and NO
+    // <sandbox>/server/.env, the value that gets loaded must come from
+    // <sandbox>/.env, mirroring the real `npm run dev:server` (cwd=server/)
+    // scenario.
+    const sandbox = mkdtempSync(path.join(repoRoot, ".ror-config-test-"));
+    try {
+      const sbServerSrc = path.join(sandbox, "server", "src");
+      cpSync(path.join(serverDir, "src"), sbServerSrc, { recursive: true });
+
+      // Known, non-secret fixture values (never a real API key).
+      const expected = {
+        model: "openrouter/free",
+        baseUrl: "https://openrouter.ai/api/v1",
+        port: 4000,
+        databasePath: "data/app.db",
+      };
+      writeFileSync(
+        path.join(sandbox, ".env"),
+        [
+          `OPENROUTER_MODEL=${expected.model}`,
+          `OPENROUTER_BASE_URL=${expected.baseUrl}`,
+          `PORT=${expected.port}`,
+          `DATABASE_PATH=${expected.databasePath}`,
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      // No server/.env in the sandbox: proves the load is anchored to the
+      // module location (repo root), not to cwd=server/.
+      expect(existsSync(path.join(sandbox, "server", ".env"))).toBe(false);
+
+      const configUrl = pathToFileURL(
+        path.join(sbServerSrc, "config.ts"),
+      ).href;
+      const sbRegisterHook = pathToFileURL(
+        path.join(sbServerSrc, "register-ts.mjs"),
+      ).href;
+      const script = [
+        `import { loadConfig } from ${JSON.stringify(configUrl)};`,
+        `const c = loadConfig();`,
+        `process.stdout.write(JSON.stringify({`,
+        `  port: c.port,`,
+        `  databasePath: c.databasePath,`,
+        `  openRouterModel: c.openRouter.model,`,
+        `  openRouterBaseUrl: c.openRouter.baseUrl,`,
+        `}));`,
+      ].join("\n");
+
+      // Ensure these vars are not already in the real env (would defeat the
+      // point of reading them from the fixture .env).
+      const env = { ...process.env };
+      delete env.OPENROUTER_MODEL;
+      delete env.OPENROUTER_BASE_URL;
+      delete env.PORT;
+      delete env.DATABASE_PATH;
+
+      const out = execFileSync(
+        process.execPath,
+        [
+          "--experimental-strip-types",
+          "--no-warnings",
+          "--import",
+          sbRegisterHook,
+          "--input-type=module",
+          "--eval",
+          script,
+        ],
+        { cwd: path.join(sandbox, "server"), encoding: "utf8", env },
+      );
+      const fromServer = JSON.parse(out.trim());
+
+      // The loaded values must equal exactly what the fixture .env wrote.
+      expect(fromServer.openRouterModel).toBe(expected.model);
+      expect(fromServer.openRouterBaseUrl).toBe(expected.baseUrl);
+      expect(fromServer.port).toBe(expected.port);
+      expect(fromServer.databasePath).toBe(expected.databasePath);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
   });
 
   it("reads a value that lives ONLY in the root .env, even with cwd=server/ (no server/.env)", () => {
