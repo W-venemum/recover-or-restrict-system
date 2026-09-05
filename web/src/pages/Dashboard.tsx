@@ -26,7 +26,10 @@ function Metric({
 }) {
   return (
     <div className={`metric metric-${tone}`}>
-      <div className="metric-label">{label}</div>
+      <div className="metric-label">
+        <span className={`metric-dot metric-dot-${tone}`} aria-hidden />
+        {label}
+      </div>
       <div className="metric-value">{value}</div>
       {hint ? <div className="metric-hint">{hint}</div> : null}
     </div>
@@ -59,6 +62,10 @@ function ModeStrip() {
   const aiTone = data.aiMode === "openrouter" ? "recover" : "neutral";
   return (
     <div className="mode-strip" title="Actual runtime configuration">
+      <span className="mode-strip-title">
+        <span className="mode-live-dot" aria-hidden />
+        Runtime
+      </span>
       <span className="mode-item">
         <span className="mode-key">Payment mode</span>
         <Badge tone="intervene">{paymentLabel}</Badge>
@@ -199,7 +206,11 @@ export function Dashboard() {
                   <td className="muted small">
                     {priorityWhy(c.outcome, c.riskScore)}
                   </td>
-                  <td className="num">{formatMoney(c.amount, currency)}</td>
+                  <td className="num">
+                    <span className="amount-strong">
+                      {formatMoney(c.amount, currency)}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -256,7 +267,14 @@ export function Dashboard() {
           ) : (
             <ul className="event-list">
               {data.recentRecoveries.map((d, i) => (
-                <li key={`${d.customerId}-${i}`}>
+                <li
+                  key={`${d.customerId}-${i}`}
+                  className={`event-${outcomeTone(d.outcome)}`}
+                >
+                  <span
+                    className={`event-dot event-dot-${outcomeTone(d.outcome)}`}
+                    aria-hidden
+                  />
                   <Badge tone={outcomeTone(d.outcome)}>{d.outcome}</Badge>
                   <button
                     className="link"
@@ -338,7 +356,13 @@ export function Dashboard() {
                     {titleize(d.nextAccessState)}
                   </Badge>
                 </td>
-                <td>{d.riskScore !== undefined ? Math.round(d.riskScore) : "—"}</td>
+                <td>
+                  {d.riskScore !== undefined ? (
+                    <span className="risk-score">{Math.round(d.riskScore)}</span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td>
                   {d.blacklistRecommended ? (
                     <Badge tone="suspend">Recommended</Badge>
