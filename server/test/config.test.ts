@@ -24,7 +24,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const serverDir = path.resolve(testDir, ".."); // server/
 const repoRoot = path.resolve(serverDir, ".."); // repo root
-const registerHook = path.join(serverDir, "src", "register-ts.mjs");
+const registerHook = pathToFileURL(
+  path.join(serverDir, "src", "register-ts.mjs"),
+).href;
 
 /**
  * Run a tiny inline ES module that imports the config module and prints the
@@ -117,6 +119,9 @@ describe("config: cwd-independent repo-root .env loading", () => {
       const configUrl = pathToFileURL(
         path.join(sbServerSrc, "config.ts"),
       ).href;
+      const sbRegisterHook = pathToFileURL(
+        path.join(sbServerSrc, "register-ts.mjs"),
+      ).href;
       const script = [
         `import { loadConfig } from ${JSON.stringify(configUrl)};`,
         `process.stdout.write(loadConfig().openRouter.model);`,
@@ -132,7 +137,7 @@ describe("config: cwd-independent repo-root .env loading", () => {
           "--experimental-strip-types",
           "--no-warnings",
           "--import",
-          path.join(sbServerSrc, "register-ts.mjs"),
+          sbRegisterHook,
           "--input-type=module",
           "--eval",
           script,
