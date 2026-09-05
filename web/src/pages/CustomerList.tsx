@@ -59,7 +59,11 @@ export function CustomerList() {
                   {c.email ? <div className="muted small">{c.email}</div> : null}
                 </td>
                 <td>{c.plan ?? "—"}</td>
-                <td className="num">{formatMoney(c.amount, c.currency)}</td>
+                <td className="num">
+                  <span className="amount-strong">
+                    {formatMoney(c.amount, c.currency)}
+                  </span>
+                </td>
                 <td>
                   {c.decision ? (
                     <Badge tone={outcomeTone(c.decision)}>{c.decision}</Badge>

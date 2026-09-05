@@ -250,6 +250,10 @@ export function CustomerDetail({ id }: { id: string }) {
       </div>
 
       <section className="card decision-engine">
+        <div className="engine-tag" aria-hidden="true">
+          <span className="engine-tag-dot" />
+          Deterministic engine
+        </div>
         <h2>Decision engine — behavioural evidence</h2>
         <p className="muted small">
           These are the deterministic signals the engine weighed to reach the{" "}
@@ -264,12 +268,15 @@ export function CustomerDetail({ id }: { id: string }) {
               <li key={`${e.code}-${i}`}>
                 <div className="evidence-msg">{e.message}</div>
                 <div className="evidence-meta">
-                  <code>{e.code}</code>
+                  <code className="code-chip">{e.code}</code>
                   {typeof e.weight === "number" ? (
                     <span
                       className={e.weight >= 0 ? "weight-up" : "weight-down"}
                       title="Signed contribution to the risk score"
                     >
+                      <span className="weight-arrow" aria-hidden="true">
+                        {e.weight >= 0 ? "▲" : "▼"}
+                      </span>
                       {e.weight >= 0 ? "+" : ""}
                       {e.weight}
                     </span>
@@ -363,6 +370,10 @@ export function CustomerDetail({ id }: { id: string }) {
       </div>
 
       <section className="card ai-explanation">
+        <div className="ai-tag" aria-hidden="true">
+          <span className="ai-tag-dot" />
+          AI narrative layer
+        </div>
         <h2>AI explanation &amp; drafted recovery message</h2>
         <p className="muted">
           The <strong>decision engine</strong> above (risk score, behavioural
