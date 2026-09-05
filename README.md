@@ -174,30 +174,6 @@ is unchanged either way, because the engine never depends on the LLM.
 > `Authorization: Bearer <secret>`) on those two routes. The comparison is
 > constant-time and the guard is a no-op when the secret is unset.
 
-## Demo walkthrough — the 7 scenarios
-
-Run `npm run seed`, then open the dashboard and the customer detail pages. Each
-scenario is evaluated through the **real** engine at seed time and asserts its
-expected outcome, so the demo data can never drift from the engine's behaviour.
-
-| # | Customer | Story | Outcome | Access state |
-| --- | --- | --- | --- | --- |
-| 1 | Aarav Sharma | Healthy, long-tenured customer paying on time. | **RECOVER** | Active |
-| 2 | Diya Menon | One-off transient gateway failure that cleared on the next attempt. | **RECOVER** | Active |
-| 3 | Rohan Gupta | Repeated insufficient-funds failures after a delayed retry — still genuine; offer an alternate UPI payment route. | **RECOVER** | Recovery |
-| 4 | Ishita Rao | Autopay repeatedly cancelled right before renewal (renewal-avoidance). | **RESTRICT** | Restricted |
-| 5 | Kabir Nair | Serial cancel-before-renewal then resubscribe cycling, no value extracted. | **RESTRICT** | Restricted |
-| 6 | Meera Iyer | Repeatedly cancels, extracts value during unpaid/grace periods, resubscribes — high-confidence abuse. | **SUSPEND** + **blacklist recommended** | Suspended |
-| 7 | Sara DeuxSous | Genuine repeated failures (expired card, then issuer outage) resolved by paying — **not** abuse. | **RECOVER**, explicitly **not** blacklisted | Active |
-
-The dashboard color-codes outcomes and access states (green = recover, amber =
-intervene, orange = restrict, red = suspend). The key contrast the demo makes
-obvious: **scenario 7** is a legitimate *repeated-failure* case that is
-**recovered and not blacklisted**, whereas **scenario 6** is deliberate
-value-extraction that is **suspended with a blacklist recommendation** for human
-review. Open each customer to see the evidence, recommended action, timeline,
-and the **Explain** / review controls.
-
 > **Pattern over score.** The decision is deliberately **not** a pure function
 > of the numeric risk band. A strong, unambiguous behavioural pattern (e.g.
 > repeated cancel-before-renewal) can drive **RESTRICT** even while the numeric
