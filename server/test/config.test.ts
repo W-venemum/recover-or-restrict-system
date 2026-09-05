@@ -19,7 +19,7 @@ import { loadConfig } from "../src/config.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, writeFileSync, rmSync, cpSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const serverDir = path.resolve(testDir, ".."); // server/
@@ -37,8 +37,8 @@ function loadConfigFrom(cwd: string): {
   openRouterModel: string;
   openRouterBaseUrl: string;
 } {
-  const configUrl = new URL(
-    "file://" + path.join(serverDir, "src", "config.ts").replace(/\\/g, "/"),
+  const configUrl = pathToFileURL(
+    path.join(serverDir, "src", "config.ts"),
   ).href;
   const script = [
     `import { loadConfig } from ${JSON.stringify(configUrl)};`,
@@ -114,9 +114,8 @@ describe("config: cwd-independent repo-root .env loading", () => {
       // No server/.env in the sandbox.
       expect(existsSync(path.join(sandbox, "server", ".env"))).toBe(false);
 
-      const configUrl = new URL(
-        "file://" +
-          path.join(sbServerSrc, "config.ts").replace(/\\/g, "/"),
+      const configUrl = pathToFileURL(
+        path.join(sbServerSrc, "config.ts"),
       ).href;
       const script = [
         `import { loadConfig } from ${JSON.stringify(configUrl)};`,
