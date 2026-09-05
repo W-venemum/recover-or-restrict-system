@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import { api } from "../api/client";
 import { Badge } from "../components/Badge";
 import { Bar } from "../components/Bar";
@@ -84,6 +86,20 @@ function ModeStrip() {
 
 export function Dashboard() {
   const { data, loading, error, reload } = useAsync(() => api.getDashboard(), []);
+  const { data: customersData } = useAsync(() => api.getCustomers(), []);
+
+  // Local id -> name lookup derived from the existing customers list endpoint.
+  // The dashboard payload only carries customerId, so names come from here.
+  const customerNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of customersData?.customers ?? []) {
+      map.set(c.id, c.name);
+    }
+    return map;
+  }, [customersData]);
+
+  // Gracefully fall back to the id if the name is not (yet) available.
+  const nameFor = (id: string) => customerNameById.get(id) ?? id;
 
   if (loading) return <div className="loading">Loading dashboard…</div>;
   if (error)
@@ -192,7 +208,7 @@ export function Dashboard() {
                   className="row-link"
                   onClick={() => navigate(`/customers/${c.customerId}`)}
                 >
-                  <td>{c.customerId}</td>
+                  <td>{nameFor(c.customerId)}</td>
                   <td>
                     <Badge tone={outcomeTone(c.outcome)}>{c.outcome}</Badge>
                   </td>
@@ -280,7 +296,7 @@ export function Dashboard() {
                     className="link"
                     onClick={() => navigate(`/customers/${d.customerId}`)}
                   >
-                    {d.customerId}
+                    {nameFor(d.customerId)}
                   </button>
                   <span className="muted">
                     → {titleize(d.nextAccessState)}
@@ -313,7 +329,7 @@ export function Dashboard() {
                     className="row-link"
                     onClick={() => navigate(`/customers/${p.customerId}`)}
                   >
-                    <td>{p.customerId}</td>
+                    <td>{nameFor(p.customerId)}</td>
                     <td>{formatDate(p.nextRenewalAt)}</td>
                     <td>
                       <Badge tone={bandTone(p.riskBand)}>{p.riskBand}</Badge>
@@ -347,7 +363,7 @@ export function Dashboard() {
                 className="row-link"
                 onClick={() => navigate(`/customers/${d.customerId}`)}
               >
-                <td>{d.customerId}</td>
+                <td>{nameFor(d.customerId)}</td>
                 <td>
                   <Badge tone={outcomeTone(d.outcome)}>{d.outcome}</Badge>
                 </td>
