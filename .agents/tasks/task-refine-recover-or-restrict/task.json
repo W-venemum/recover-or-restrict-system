@@ -1,7 +1,19 @@
 {
   "task_id": "task-refine-recover-or-restrict",
   "task_description": "Refinement pass on the already-built Recover-or-Restrict system. Implement 8 minimum-change refinements: (1) canonical root .env loaded cwd-independently; (2/6/12) OpenRouter transparency - honest per-call source/model reporting with deterministic fallback and non-secret failure logging, extend /api/health and /explain, expose configured/actual model; (3) UI separation of decision engine vs AI explanation; (4) strengthen revenue-recovery story; (5) dashboard storytelling; (6) runtime payment/AI mode indicators; (7) demo scenario clarity (false-positive contrast); (8) preserve human blacklist review boundary. Do NOT change engine/financial/risk/decision logic, do NOT convert Razorpay to live, keep all 7 scenario outcomes, keep 133 baseline tests green, add tests for new behavior. Commit locally on main; do not push.",
-  "status": "in_progress",
+  "status": "completed",
   "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004"],
-  "blocked_reason": null
+  "blocked_reason": null,
+  "review": {
+    "iterations": 2,
+    "final_verdict": "APPROVED",
+    "notes": "v1 (2026-09-05-000600) APPROVED with 2 non-blocking findings (placeholder key flipped demo to OpenRouter; missing e2e fallback assertion). Both addressed in commit 22f4b53. v2 (2026-09-05-001500) APPROVED, no blocking issues; one negligible non-blocking observation (broad paste_your substring match, false-negative-only)."
+  },
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "pass",
+    "docker_build": "skipped",
+    "summary": "npm test: 11 files, 146/146 pass (baseline 133 + 13 new for config cwd-independence, OpenRouter success/failure source-model reporting, health/explain shape, revenue pass-through). npm run build: zero errors both workspaces. npm run seed: 7 OK lines + 'Seeded 7 scenarios (7 matched expectations).' with scenario 6 SUSPEND+BLACKLIST_RECOMMENDED vs scenario 7 RECOVER preserved. /api/health on a live dev:server returns {status,paymentMode:simulation,llm,model:openai/gpt-4o-mini,aiMode}. Test quality confirmed behavioural: openrouter.test.ts drives the real adapter with a mocked fetch to assert source='openrouter'+returned model on 200, and source='deterministic'+fallbackReason (HTTP 401 / network error / empty completion) on failure with text equal to the deterministic fallback and no key leak; these fail if the transparency logic is reverted. No Dockerfile so docker_build skipped. Commit 98caf45 on main; no .env/*.db/secrets staged."
+  }
 }
