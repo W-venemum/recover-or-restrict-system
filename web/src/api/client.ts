@@ -11,6 +11,7 @@ import type {
   CustomerListResponse,
   DashboardResponse,
   ExplainResponse,
+  HealthResponse,
   ReviewAction,
   ReviewResponse,
 } from "./types";
@@ -34,6 +35,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getHealth: () => request<HealthResponse>("/api/health"),
   getDashboard: () => request<DashboardResponse>("/api/dashboard"),
   getCustomers: () => request<CustomerListResponse>("/api/customers"),
   getCustomer: (id: string) =>

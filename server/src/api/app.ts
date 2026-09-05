@@ -332,6 +332,10 @@ export function createApp(deps: AppDependencies): Express {
       status: "ok",
       paymentMode: paymentAdapter.mode,
       llm: llmAdapter.kind,
+      // Actual runtime configuration: the configured model ("deterministic"
+      // for the pure fallback adapter) and the ai mode. Never a secret.
+      model: llmAdapter.model,
+      aiMode: llmAdapter.kind,
     });
   });
 
@@ -487,18 +491,33 @@ export function createApp(deps: AppDependencies): Express {
         llmAdapter.draftRecoveryMessage(bundle.customer, decision),
       ]);
 
+      // Report the TRUE source/model that produced the explanation. A failed
+      // OpenRouter call yields deterministic text and MUST be reported as such,
+      // never as a successful LLM response. The explanation drives the headline
+      // source; a fallbackReason (if any) is surfaced for the UI.
+      const actualSource = explanation.source;
+      const actualModel = explanation.model;
+      const fallbackReason = explanation.fallbackReason;
+
       repo.insertAuditEntry({
         customerId: id,
         action: "explanation_generated",
-        detail: `Generated explanation via ${llmAdapter.kind} adapter.`,
-        metadata: { source: llmAdapter.kind, outcome: decision.outcome },
+        detail: `Generated explanation via ${actualSource} (model ${actualModel}).`,
+        metadata: {
+          source: actualSource,
+          model: actualModel,
+          outcome: decision.outcome,
+          ...(fallbackReason ? { fallbackReason } : {}),
+        },
       });
 
       res.json({
-        source: llmAdapter.kind,
+        source: actualSource,
+        model: actualModel,
         outcome: decision.outcome,
-        explanation,
-        recoveryMessage,
+        explanation: explanation.text,
+        recoveryMessage: recoveryMessage.text,
+        ...(fallbackReason ? { fallbackReason } : {}),
       });
     }),
   );

@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-004",
+  "type": "docs",
+  "description": "Change #15: Update README to accurately reflect the refinements, and perform the final full verification pass and clean commit. README updates only where required: canonical root .env (cwd-independent loading, no server/.env needed), OpenRouter configuration incl. free-model (openrouter/free) and that the actual returned model may be reported, deterministic fallback and how failures are surfaced (source/model transparency), simulation vs live distinction, the real (explanatory-only) AI role, current demo flow, how to run, and known limitations. No overclaiming (no production readiness, ML training, or live payment claims).",
+  "status": "completed",
+  "steps": [
+    "Depends on FEAT-001/002/003 being complete.",
+    "Update README.md: environment section to state the root .env is the single canonical local env file, loaded regardless of workspace cwd (module-location based), and that server/.env is NOT required. Update the /api/health row to mention it now also reports the configured model / AI mode. Update the OpenRouter section to explain: configurable via OPENROUTER_MODEL, free-model option (openrouter/free) allowed, that on success the actual returned model may be reported, and that failures transparently fall back to deterministic text with the source/reason surfaced in the API and UI. Keep the simulation/live Razorpay distinction and the explanatory-only AI role accurate. Do NOT include any API key or secret in the README.",
+    "Do NOT overclaim: keep the 'no machine learning', 'simulation-mode payments', 'not production-hardened' limitations accurate and add a note that OpenRouter failures degrade to deterministic text visibly.",
+    "Verify .env.example remains safe (no real key) and unchanged in intent; if new env-related docs are needed they go in README, not by exposing secrets.",
+    "Final verification pass: run `npm test` (all green), `npm run build` (zero errors both workspaces), `npm run seed` (7 OK lines + 'Seeded 7 scenarios (7 matched expectations).'), start `npm run dev:server` backgrounded and curl /api/health then stop.",
+    "Run `git status` and `git diff --stat` and confirm no .env, no *.db/*.db-shm/*.db-wal, and no secrets are staged. Confirm .env is still gitignored.",
+    "Stage only the intended source/doc/test files and create clean, well-described commit(s) on branch main. Do NOT push and do NOT open a PR."
+  ],
+  "acceptance_criteria": [
+    "README accurately documents canonical root .env (cwd-independent), OpenRouter config incl. free-model and actual-model reporting, deterministic fallback + failure transparency, simulation/live distinction, explanatory-only AI role, demo flow, how to run, and limitations, with no overclaiming and no secrets.",
+    "`npm test` all green, `npm run build` zero errors, `npm run seed` prints 7 OK lines and the matched-expectations line.",
+    "GET /api/health responds correctly on a live backend.",
+    "git status shows no committed .env, no *.db files, and no secrets; .env remains gitignored.",
+    "Changes are committed locally on main with clear messages; nothing pushed."
+  ],
+  "verification": [
+    "Run `npm test`, `npm run build`, `npm run seed` and confirm all pass with expected output.",
+    "Run `git status` and `git log --oneline -3` to confirm clean commit(s) on main and no secret/.env/*.db files staged."
+  ],
+  "blocked_reason": null,
+  "findings": "README updated: 'Where to put the OpenRouter key' now documents the canonical repo-root .env loaded cwd-independently (module-location based via server/src/config.ts, no server/.env needed), OPENROUTER_MODEL configurability incl. the free routing alias openrouter/free, actual-model-used reporting on success, and source/model/fallbackReason transparency on failure. /api/health API row now notes model + AI mode. /explain row notes source/model/fallbackReason. OPENROUTER_MODEL env table row notes free-model alias. LLM known-limitation now states failures degrade to deterministic text visibly. No overclaiming; no secrets added. .env.example unchanged and safe (placeholder key only). Verification: npm test 146/146 pass (openrouter fallback warns and api.e2e 'payment.definitely_not_real' stderr are expected negative-path output); npm run build zero errors both workspaces; npm run seed printed 7 OK lines + 'Seeded 7 scenarios (7 matched expectations).'; dev:server /api/health returned {status:ok, paymentMode:simulation, llm:openrouter, model:openai/gpt-4o-mini, aiMode:openrouter} (llm=openrouter because root .env holds a placeholder key per context). git status confirmed no .env/*.db/node_modules/dist staged; .env, data/app.db, server/data/app.db all gitignored. Committed locally on main; not pushed."
+}

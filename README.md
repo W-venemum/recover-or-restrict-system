@@ -107,7 +107,7 @@ app runs fully in deterministic demo / simulation mode.
 | `PORT` | No | `4000` | Backend HTTP port. |
 | `DATABASE_PATH` | No | `data/app.db` | SQLite database file path. |
 | `OPENROUTER_API_KEY` | No | _(unset)_ | Enables LLM-phrased explanation text. **Without it the app uses deterministic fallback text.** |
-| `OPENROUTER_MODEL` | No | `openai/gpt-4o-mini` | Model id used when an OpenRouter key is set. |
+| `OPENROUTER_MODEL` | No | `openai/gpt-4o-mini` | Model id used when an OpenRouter key is set. Any OpenRouter model id works, including a free routing alias such as `openrouter/free`. |
 | `OPENROUTER_BASE_URL` | No | `https://openrouter.ai/api/v1` | OpenRouter API base URL. |
 | `RAZORPAY_MODE` | No | `simulation` | `simulation` (default) or `live`. |
 | `RAZORPAY_KEY_ID` | No | _(unset)_ | Razorpay key id (only for `live`). |
@@ -117,12 +117,29 @@ app runs fully in deterministic demo / simulation mode.
 
 ### Where to put the OpenRouter key
 
-Put it in the **repo-root `.env`** file as `OPENROUTER_API_KEY=...`. That's the
-only place it's read from (via `dotenv` in `server/src/config.ts`). `.env` is
-gitignored, so your key is never committed. If the key is absent or an API call
-fails, the app transparently falls back to deterministic explanation text — the
-decision itself is unchanged either way, because the engine never depends on the
-LLM.
+Put it in the **repo-root `.env`** file as `OPENROUTER_API_KEY=...`. That is the
+single canonical local env file and the only place the key is read from. It is
+loaded regardless of the workspace working directory: `server/src/config.ts`
+resolves the `.env` path from the module's own location (two levels up), not
+from `process.cwd()`, so it is found correctly even under `npm run dev:server`
+(whose cwd is `server/`). A separate `server/.env` is **not** required and is
+not used. `.env` is gitignored, so your key is never committed.
+
+**Choosing a model.** The model is configurable via `OPENROUTER_MODEL` and
+defaults to `openai/gpt-4o-mini`. Any OpenRouter model id is accepted, including
+a free routing alias such as `openrouter/free`. On a successful call the app
+reports the model that OpenRouter actually used for the completion (a routing
+alias may resolve to a concrete model), so the reported model can differ from
+the configured id.
+
+**Source / model transparency.** If the key is absent or an API call fails, the
+app transparently falls back to deterministic explanation text. The response
+honestly reports the **true** `source` (`openrouter` only when a live completion
+succeeded, otherwise `deterministic`), the actual `model`, and, on fallback, a
+non-secret `fallbackReason` (for example `HTTP 401` or `empty completion`). The
+API and the UI surface this provenance so it is always clear which text came
+from the LLM and which came from the deterministic fallback. The decision itself
+is unchanged either way, because the engine never depends on the LLM.
 
 ## Razorpay simulation mode & webhook verification
 
@@ -142,11 +159,11 @@ LLM.
 
 | Method & path | Purpose |
 | --- | --- |
-| `GET /api/health` | Liveness + active payment mode and LLM adapter kind. |
+| `GET /api/health` | Liveness + active payment mode, LLM adapter kind, the configured model, and the AI mode. |
 | `GET /api/dashboard` | Revenue summary, risk distribution, recent decisions/recoveries, predicted failures. |
 | `GET /api/customers` | Customer list with score/band/decision/access state/blacklist flag. |
 | `GET /api/customers/:id` | Subscription, payment history, behavioural timeline, risk, evidence, recommended action + expected outcome, access state. |
-| `POST /api/customers/:id/explain` | LLM-or-fallback explanation + drafted recovery message. |
+| `POST /api/customers/:id/explain` | LLM-or-fallback explanation + drafted recovery message, with the true `source`, `model`, and (on fallback) `fallbackReason`. |
 | `POST /api/customers/:id/review` | Merchant controls: `approve_blacklist`, `reject_blacklist`, `reinstate_access`, `restore_access`. Writes the audit log. |
 | `POST /api/webhooks/razorpay` | Ingests (signature-verified) payment events and re-evaluates. |
 
@@ -207,7 +224,11 @@ webhook HMAC verification), and HTTP end-to-end tests via supertest.
   charges, payment links or gateway calls happen unless configured for `live`.
 - **LLM text is explanatory only.** Any OpenRouter output only phrases
   explanations / recovery messages. It never influences a decision, and a
-  deterministic fallback is always used when no key is set or a call fails.
+  deterministic fallback is always used when no key is set or a call fails. When
+  an OpenRouter call fails, the app degrades to deterministic text **visibly**:
+  the response reports `source: "deterministic"` with a non-secret
+  `fallbackReason`, and the UI shows the same, so the degradation is never
+  hidden.
 - **No machine learning.** Scoring and decisions are deterministic, hand-tuned,
   rules-based logic — not a trained model. "Predicted failures" is a simple
   heuristic over the latest decision and upcoming renewals.

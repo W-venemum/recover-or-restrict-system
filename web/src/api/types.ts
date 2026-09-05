@@ -57,6 +57,8 @@ export interface HighPriorityCustomer {
   outcome: DecisionOutcome;
   riskScore: number;
   priority: number;
+  /** Recommended recovery intervention (pass-through of the stored decision). */
+  recommendedAction?: RecoveryAction;
 }
 
 export interface PredictedFailure {
@@ -178,9 +180,21 @@ export interface CustomerDetailResponse {
 
 export interface ExplainResponse {
   source: "openrouter" | "deterministic";
+  model: string;
   outcome: DecisionOutcome;
   explanation: string;
   recoveryMessage: string;
+  /** Present only when an intended OpenRouter call degraded to the fallback. */
+  fallbackReason?: string;
+}
+
+export interface HealthResponse {
+  status: string;
+  paymentMode: "simulation" | "live";
+  llm: "openrouter" | "deterministic";
+  /** Configured model id, or "deterministic" for the pure fallback adapter. */
+  model: string;
+  aiMode: "openrouter" | "deterministic";
 }
 
 export type ReviewAction =

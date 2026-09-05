@@ -33,6 +33,48 @@ function Metric({
   );
 }
 
+/**
+ * A compact "why is this customer prioritized" phrase derived purely from the
+ * outcome and risk score already in the priority row. No fabricated data.
+ */
+function priorityWhy(outcome: string, riskScore: number): string {
+  const score = Math.round(riskScore);
+  switch (outcome) {
+    case "SUSPEND":
+      return `Revenue at risk of being lost · risk ${score}`;
+    case "RESTRICT":
+      return `Access restricted, still recoverable · risk ${score}`;
+    case "INTERVENE":
+      return `Failed payment needs intervention · risk ${score}`;
+    default:
+      return `Recovery in progress · risk ${score}`;
+  }
+}
+
+function ModeStrip() {
+  const { data } = useAsync(() => api.getHealth(), []);
+  if (!data) return null;
+  const paymentLabel = data.paymentMode === "live" ? "LIVE" : "SIMULATION";
+  const aiLabel = data.aiMode === "openrouter" ? "OPENROUTER" : "DETERMINISTIC FALLBACK";
+  const aiTone = data.aiMode === "openrouter" ? "recover" : "neutral";
+  return (
+    <div className="mode-strip" title="Actual runtime configuration">
+      <span className="mode-item">
+        <span className="mode-key">Payment mode</span>
+        <Badge tone="intervene">{paymentLabel}</Badge>
+      </span>
+      <span className="mode-item">
+        <span className="mode-key">AI mode</span>
+        <Badge tone={aiTone}>{aiLabel}</Badge>
+      </span>
+      <span className="mode-item">
+        <span className="mode-key">Model</span>
+        <span className="mode-value">{data.model}</span>
+      </span>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const { data, loading, error, reload } = useAsync(() => api.getDashboard(), []);
 
@@ -60,36 +102,33 @@ export function Dashboard() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Revenue &amp; trust overview</h1>
+        <div>
+          <h1>AI revenue recovery overview</h1>
+          <p className="muted">
+            How much revenue is recovered, at risk, pending or lost — and which
+            customers need attention next.
+          </p>
+        </div>
         <button className="btn btn-ghost" onClick={reload}>
           Refresh
         </button>
       </div>
 
+      <ModeStrip />
+
+      {/* Primary recovery hierarchy: recovered, at risk, recovery rate, pending. */}
       <section className="metric-grid">
         <Metric
-          label="Total subscription revenue"
-          value={formatMoney(r.totalSubscriptionRevenue, currency)}
-        />
-        <Metric
-          label="Recovered revenue"
+          label="Revenue recovered"
           value={formatMoney(r.recoveredRevenue, currency)}
           tone="recover"
+          hint="Payments recovered back to active"
         />
         <Metric
           label="Revenue at risk"
           value={formatMoney(r.revenueAtRisk, currency)}
           tone="intervene"
-        />
-        <Metric
-          label="Pending recovery"
-          value={formatMoney(r.pendingRecovery, currency)}
-          tone="intervene"
-        />
-        <Metric
-          label="Lost revenue"
-          value={formatMoney(r.lostRevenue, currency)}
-          tone="suspend"
+          hint="Recoverable, awaiting intervention"
         />
         <Metric
           label="Recovery rate"
@@ -97,6 +136,75 @@ export function Dashboard() {
           tone="recover"
           hint="recovered / (recovered + at risk + lost)"
         />
+        <Metric
+          label="Pending recovery"
+          value={formatMoney(r.pendingRecovery, currency)}
+          tone="intervene"
+          hint="Recovery action recommended, not yet resolved"
+        />
+      </section>
+
+      {/* Secondary context: lost revenue and total book. */}
+      <section className="metric-grid metric-grid-secondary">
+        <Metric
+          label="Lost revenue"
+          value={formatMoney(r.lostRevenue, currency)}
+          tone="suspend"
+          hint="Leakage prevented via access restriction"
+        />
+        <Metric
+          label="Total subscription revenue"
+          value={formatMoney(r.totalSubscriptionRevenue, currency)}
+          hint="Full recurring book under management"
+        />
+      </section>
+
+      <section className="card">
+        <h2>Highest-priority customers</h2>
+        <p className="muted">
+          Ranked by urgency (outcome, revenue at stake and risk). Click a row to
+          review the decision and take the recommended recovery action.
+        </p>
+        {r.highestPriorityCustomers.length === 0 ? (
+          <p className="muted">Nothing needs attention right now.</p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Outcome</th>
+                <th>Recommended action</th>
+                <th>Why prioritized</th>
+                <th className="num">Revenue at stake</th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.highestPriorityCustomers.map((c) => (
+                <tr
+                  key={c.subscriptionId}
+                  className="row-link"
+                  onClick={() => navigate(`/customers/${c.customerId}`)}
+                >
+                  <td>{c.customerId}</td>
+                  <td>
+                    <Badge tone={outcomeTone(c.outcome)}>{c.outcome}</Badge>
+                  </td>
+                  <td>
+                    {c.recommendedAction ? (
+                      titleize(c.recommendedAction)
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                  <td className="muted small">
+                    {priorityWhy(c.outcome, c.riskScore)}
+                  </td>
+                  <td className="num">{formatMoney(c.amount, currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
       <div className="two-col">
@@ -141,42 +249,6 @@ export function Dashboard() {
           </div>
         </section>
 
-        <section className="card">
-          <h2>Highest-priority customers</h2>
-          {r.highestPriorityCustomers.length === 0 ? (
-            <p className="muted">Nothing needs attention right now.</p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Outcome</th>
-                  <th>Risk</th>
-                  <th className="num">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {r.highestPriorityCustomers.map((c) => (
-                  <tr
-                    key={c.subscriptionId}
-                    className="row-link"
-                    onClick={() => navigate(`/customers/${c.customerId}`)}
-                  >
-                    <td>{c.customerId}</td>
-                    <td>
-                      <Badge tone={outcomeTone(c.outcome)}>{c.outcome}</Badge>
-                    </td>
-                    <td>{Math.round(c.riskScore)}</td>
-                    <td className="num">{formatMoney(c.amount, currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      </div>
-
-      <div className="two-col">
         <section className="card">
           <h2>Recent recovery events</h2>
           {data.recentRecoveries.length === 0 ? (
