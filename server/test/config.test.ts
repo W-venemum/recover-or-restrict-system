@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { loadConfig } from "../src/config.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, writeFileSync, rmSync, cpSync } from "node:fs";
 import path from "node:path";
@@ -143,5 +144,34 @@ describe("config: cwd-independent repo-root .env loading", () => {
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
     }
+  });
+});
+
+describe("config: placeholder OpenRouter key is treated as unset", () => {
+  // Use loadConfig(envOverride) with an explicit env object so these tests do
+  // not depend on the real repo-root .env and never hit the network.
+  it("treats the documented placeholder as absent (OpenRouter disabled, no apiKey)", () => {
+    const config = loadConfig({
+      OPENROUTER_API_KEY: "PASTE_YOUR_OPENROUTER_API_KEY_HERE",
+    } as NodeJS.ProcessEnv);
+    expect(config.openRouter.enabled).toBe(false);
+    expect(config.openRouter.apiKey).toBeUndefined();
+  });
+
+  it("treats a case-varied / lightly-edited PASTE_YOUR placeholder as absent", () => {
+    const config = loadConfig({
+      OPENROUTER_API_KEY: "paste_your_openrouter_api_key_here",
+    } as NodeJS.ProcessEnv);
+    expect(config.openRouter.enabled).toBe(false);
+    expect(config.openRouter.apiKey).toBeUndefined();
+  });
+
+  it("honors a genuine-looking non-placeholder key (OpenRouter enabled, apiKey set)", () => {
+    const genuine = "sk-or-v1-0123456789abcdef0123456789abcdef";
+    const config = loadConfig({
+      OPENROUTER_API_KEY: genuine,
+    } as NodeJS.ProcessEnv);
+    expect(config.openRouter.enabled).toBe(true);
+    expect(config.openRouter.apiKey).toBe(genuine);
   });
 });

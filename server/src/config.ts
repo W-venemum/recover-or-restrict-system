@@ -81,6 +81,30 @@ function readNumber(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+/**
+ * The documented placeholder shipped in `.env.example` (and the repo-root
+ * `.env`) for the OpenRouter key. It is NOT a real credential: it exists only
+ * to show operators where to paste their own key. If left in place it must be
+ * treated as UNSET so the app keeps its zero-config, fully deterministic demo
+ * default (README promise: "with none set the app runs fully in deterministic
+ * demo/simulation mode"). A genuine key is still honored unchanged.
+ */
+const OPENROUTER_API_KEY_PLACEHOLDER = "PASTE_YOUR_OPENROUTER_API_KEY_HERE";
+
+/**
+ * Return true when an OpenRouter API key value is an obvious unset/placeholder
+ * rather than a real credential. Matches the documented sentinel exactly
+ * (case-insensitive) and also any value still carrying the "PASTE_YOUR"
+ * substring, so a lightly-edited placeholder is still treated as absent.
+ */
+function isPlaceholderOpenRouterKey(value: string): boolean {
+  const normalised = value.trim().toLowerCase();
+  return (
+    normalised === OPENROUTER_API_KEY_PLACEHOLDER.toLowerCase() ||
+    normalised.includes("paste_your")
+  );
+}
+
 /** A real, current OpenRouter model id used as the sensible default. */
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-4o-mini";
 const DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -100,7 +124,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     Object.assign(process.env, env);
   }
   try {
-    const openRouterApiKey = readString("OPENROUTER_API_KEY");
+    const rawOpenRouterApiKey = readString("OPENROUTER_API_KEY");
+    // Treat the documented placeholder as absent so the shipped `.env` /
+    // `.env.example` default keeps the pure deterministic demo posture instead
+    // of selecting OpenRouter and 401ing on every /explain call. A real key is
+    // honored unchanged.
+    const openRouterApiKey =
+      rawOpenRouterApiKey && isPlaceholderOpenRouterKey(rawOpenRouterApiKey)
+        ? undefined
+        : rawOpenRouterApiKey;
     const razorpayModeRaw = (readString("RAZORPAY_MODE") ?? "simulation").toLowerCase();
     const razorpayMode: RazorpayMode = razorpayModeRaw === "live" ? "live" : "simulation";
 

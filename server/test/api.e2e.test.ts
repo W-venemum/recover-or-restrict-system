@@ -20,8 +20,11 @@ import {
   SimulationRazorpayAdapter,
   computeWebhookSignature,
 } from "../src/adapters/razorpay.js";
-import { DeterministicExplainer } from "../src/adapters/openrouter.js";
-import type { RazorpayConfig } from "../src/config.js";
+import {
+  DeterministicExplainer,
+  OpenRouterAdapter,
+} from "../src/adapters/openrouter.js";
+import type { OpenRouterConfig, RazorpayConfig } from "../src/config.js";
 
 const WEBHOOK_SECRET = "whsec_e2e_secret";
 const RZP_CONFIG: RazorpayConfig = {
@@ -91,6 +94,77 @@ describe("POST /api/customers/:id/explain", () => {
     expect(res.body.outcome).toBe("RECOVER");
     // No fallbackReason since the deterministic adapter is the intended one.
     expect(res.body.fallbackReason).toBeUndefined();
+  });
+});
+
+describe("POST /api/customers/:id/explain — live OpenRouter that fails degrades to deterministic", () => {
+  // Wire a SEPARATE app whose LLM adapter is a real OpenRouterAdapter but with
+  // a mocked fetch that always fails (HTTP 401). This exercises the app.ts
+  // wiring that surfaces the honest source/model/fallbackReason into the HTTP
+  // response body (and audit metadata) end to end. No network is touched.
+  const OR_CONFIG: OpenRouterConfig = {
+    apiKey: "sk-or-test-key-not-real",
+    model: "openai/gpt-4o-mini",
+    baseUrl: "https://openrouter.ai/api/v1",
+    enabled: true,
+  };
+  let orDb: DB;
+  let orRepo: Repository;
+  let orApp: Express;
+
+  beforeAll(() => {
+    orDb = openDatabase(":memory:");
+    orRepo = new Repository(orDb);
+    seedDatabase(orRepo, orDb);
+    // Mock fetch always returns HTTP 401 so complete() fails and the adapter
+    // falls back to deterministic text with a non-secret fallbackReason.
+    const failingFetch: typeof fetch = async () =>
+      new Response("unauthorized", {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    orApp = createApp({
+      repo: orRepo,
+      paymentAdapter: new SimulationRazorpayAdapter(RZP_CONFIG),
+      llmAdapter: new OpenRouterAdapter(OR_CONFIG, failingFetch),
+    });
+  });
+
+  afterAll(() => {
+    orDb.close();
+  });
+
+  it("reports source 'deterministic' with a fallbackReason and still returns usable text", async () => {
+    const res = await request(orApp)
+      .post("/api/customers/cust_transient/explain")
+      .send({});
+    expect(res.status).toBe(200);
+    // A failed live call must NOT masquerade as an OpenRouter success.
+    expect(res.body.source).toBe("deterministic");
+    // The configured model is still named so the UI can report it.
+    expect(res.body.model).toBe("openai/gpt-4o-mini");
+    expect(typeof res.body.explanation).toBe("string");
+    expect(res.body.explanation.length).toBeGreaterThan(0);
+    expect(typeof res.body.recoveryMessage).toBe("string");
+    expect(res.body.recoveryMessage.length).toBeGreaterThan(0);
+    expect(res.body.outcome).toBe("RECOVER");
+    // A non-secret fallback reason is surfaced (HTTP status here).
+    expect(typeof res.body.fallbackReason).toBe("string");
+    expect(res.body.fallbackReason).toMatch(/HTTP 401|network error/);
+    // The API key must never leak into the response.
+    expect(JSON.stringify(res.body)).not.toContain(OR_CONFIG.apiKey);
+
+    // The audit entry records the true deterministic source + model + reason.
+    const audits = orRepo.listAuditEntries("cust_transient");
+    const explainAudit = audits.find(
+      (a) => a.action === "explanation_generated",
+    );
+    expect(explainAudit).toBeDefined();
+    const meta = (explainAudit?.metadata ?? {}) as Record<string, unknown>;
+    expect(meta.source).toBe("deterministic");
+    expect(meta.model).toBe("openai/gpt-4o-mini");
+    expect(String(meta.fallbackReason)).toMatch(/HTTP 401|network error/);
+    expect(JSON.stringify(meta)).not.toContain(OR_CONFIG.apiKey);
   });
 });
 
