@@ -1,0 +1,7 @@
+{
+  "task_id": "task-refine-recover-or-restrict",
+  "task_description": "Refinement pass on the already-built Recover-or-Restrict system. Implement 8 minimum-change refinements: (1) canonical root .env loaded cwd-independently; (2/6/12) OpenRouter transparency - honest per-call source/model reporting with deterministic fallback and non-secret failure logging, extend /api/health and /explain, expose configured/actual model; (3) UI separation of decision engine vs AI explanation; (4) strengthen revenue-recovery story; (5) dashboard storytelling; (6) runtime payment/AI mode indicators; (7) demo scenario clarity (false-positive contrast); (8) preserve human blacklist review boundary. Do NOT change engine/financial/risk/decision logic, do NOT convert Razorpay to live, keep all 7 scenario outcomes, keep 133 baseline tests green, add tests for new behavior. Commit locally on main; do not push.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004"],
+  "blocked_reason": null
+}

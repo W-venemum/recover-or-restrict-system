@@ -71,6 +71,26 @@ describe("GET /api/health", () => {
     expect(res.status).toBe(200);
     expect(res.body.paymentMode).toBe("simulation");
     expect(res.body.llm).toBe("deterministic");
+    // Runtime AI mode + configured model are exposed for the UI indicators.
+    expect(res.body.aiMode).toBe("deterministic");
+    expect(res.body.model).toBe("deterministic");
+  });
+});
+
+describe("POST /api/customers/:id/explain", () => {
+  it("returns the actual source + model used (deterministic in e2e)", async () => {
+    const res = await request(app)
+      .post("/api/customers/cust_transient/explain")
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.source).toBe("deterministic");
+    expect(res.body.model).toBe("deterministic");
+    expect(typeof res.body.explanation).toBe("string");
+    expect(res.body.explanation.length).toBeGreaterThan(0);
+    expect(typeof res.body.recoveryMessage).toBe("string");
+    expect(res.body.outcome).toBe("RECOVER");
+    // No fallbackReason since the deterministic adapter is the intended one.
+    expect(res.body.fallbackReason).toBeUndefined();
   });
 });
 

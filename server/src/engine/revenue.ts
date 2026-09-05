@@ -41,6 +41,12 @@ export interface HighPriorityCustomer {
   riskScore: number;
   /** Composite urgency used for ranking (higher = more urgent). */
   priority: number;
+  /**
+   * Pure pass-through of the stored decision's recommended recovery action, so
+   * the dashboard priority table can show WHICH intervention to take. Does not
+   * affect ranking math or any financial/decision logic.
+   */
+  recommendedAction?: RecoveryAction;
 }
 
 export interface PredictedFailure {
@@ -211,6 +217,9 @@ export function summariseRevenue(input: RevenueInput): RevenueSummary {
         outcome,
         riskScore,
         priority,
+        ...(view?.recommendedAction
+          ? { recommendedAction: view.recommendedAction }
+          : {}),
       });
     }
 

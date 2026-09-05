@@ -18,13 +18,48 @@ import type {
   RecoveryAction,
 } from "../domain/types.js";
 
+/**
+ * Structured per-call LLM result. Carries the generated text plus the TRUE
+ * provenance of that text so the API / UI can honestly report whether the
+ * copy came from OpenRouter or from the deterministic fallback.
+ *
+ * - `source`  — what ACTUALLY produced `text` on this call ("openrouter" only
+ *   when a live LLM completion succeeded; "deterministic" otherwise).
+ * - `model`   — the model actually used. For a successful OpenRouter call this
+ *   is the model reported by the API response (which may differ from a routing
+ *   alias such as "openrouter/free"); on fallback it is the configured model
+ *   string, or "deterministic" for the pure deterministic adapter.
+ * - `fallbackReason` — present ONLY when an intended OpenRouter call degraded
+ *   to deterministic text. A non-secret, human-readable reason (e.g. "HTTP 401",
+ *   "network error: <safe message>", "empty completion"). Never contains the
+ *   API key, headers, request/response bodies, prompt text, or PII.
+ */
+export interface LlmResult {
+  text: string;
+  source: "openrouter" | "deterministic";
+  model: string;
+  fallbackReason?: string;
+}
+
 export interface LlmAdapter {
   /** Which implementation is active — useful for diagnostics / UI badges. */
   readonly kind: "openrouter" | "deterministic";
+  /**
+   * The model this adapter is configured to use. "deterministic" for the pure
+   * fallback adapter; the configured OpenRouter model id otherwise. Lets the
+   * health endpoint / dashboard report the actual runtime configuration.
+   */
+  readonly model: string;
   /** Produce a human-readable explanation of a decision from its evidence. */
-  explainDecision(decision: Decision, evidence?: Evidence[]): Promise<string>;
+  explainDecision(
+    decision: Decision,
+    evidence?: Evidence[],
+  ): Promise<LlmResult>;
   /** Draft a customer-facing recovery message appropriate to the decision. */
-  draftRecoveryMessage(customer: Customer, decision: Decision): Promise<string>;
+  draftRecoveryMessage(
+    customer: Customer,
+    decision: Decision,
+  ): Promise<LlmResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,12 +82,17 @@ const ACTION_PHRASES: Record<RecoveryAction, string> = {
  */
 export class DeterministicExplainer implements LlmAdapter {
   readonly kind = "deterministic" as const;
+  readonly model = "deterministic" as const;
 
   async explainDecision(
     decision: Decision,
     evidence: Evidence[] = decision.evidence,
-  ): Promise<string> {
-    return this.explainDecisionSync(decision, evidence);
+  ): Promise<LlmResult> {
+    return {
+      text: this.explainDecisionSync(decision, evidence),
+      source: "deterministic",
+      model: this.model,
+    };
   }
 
   explainDecisionSync(
@@ -88,8 +128,12 @@ export class DeterministicExplainer implements LlmAdapter {
   async draftRecoveryMessage(
     customer: Customer,
     decision: Decision,
-  ): Promise<string> {
-    return this.draftRecoveryMessageSync(customer, decision);
+  ): Promise<LlmResult> {
+    return {
+      text: this.draftRecoveryMessageSync(customer, decision),
+      source: "deterministic",
+      model: this.model,
+    };
   }
 
   draftRecoveryMessageSync(customer: Customer, decision: Decision): string {
@@ -124,8 +168,18 @@ const OUTCOME_HEADLINES: Record<Decision["outcome"], string> = {
 // ---------------------------------------------------------------------------
 
 interface ChatCompletionResponse {
+  model?: string;
   choices?: { message?: { content?: string } }[];
 }
+
+/**
+ * Internal outcome of a single OpenRouter completion attempt. Either a success
+ * carrying the content and the model the API actually used, or a failure with a
+ * non-secret reason suitable for logging and for the `fallbackReason` field.
+ */
+type CompletionOutcome =
+  | { ok: true; content: string; model: string }
+  | { ok: false; reason: string };
 
 /**
  * OpenRouter-backed explainer. POSTs to `${baseUrl}/chat/completions` with the
@@ -134,19 +188,21 @@ interface ChatCompletionResponse {
  */
 export class OpenRouterAdapter implements LlmAdapter {
   readonly kind = "openrouter" as const;
+  readonly model: string;
   private readonly fallback = new DeterministicExplainer();
   private readonly config: OpenRouterConfig;
   private readonly fetchImpl: typeof fetch;
 
   constructor(config: OpenRouterConfig, fetchImpl: typeof fetch = fetch) {
     this.config = config;
+    this.model = config.model;
     this.fetchImpl = fetchImpl;
   }
 
   async explainDecision(
     decision: Decision,
     evidence: Evidence[] = decision.evidence,
-  ): Promise<string> {
+  ): Promise<LlmResult> {
     const prompt = [
       "You are a support analyst. In 2-4 short sentences, explain this subscription decision to an operator.",
       "Base your explanation ONLY on the evidence provided; do not invent facts.",
@@ -154,14 +210,22 @@ export class OpenRouterAdapter implements LlmAdapter {
       "Evidence:",
       ...evidence.map((e) => `- ${e.message}`),
     ].join("\n");
-    const text = await this.complete(prompt);
-    return text ?? this.fallback.explainDecisionSync(decision, evidence);
+    const outcome = await this.complete(prompt);
+    if (outcome.ok) {
+      return { text: outcome.content, source: "openrouter", model: outcome.model };
+    }
+    return {
+      text: this.fallback.explainDecisionSync(decision, evidence),
+      source: "deterministic",
+      model: this.config.model,
+      fallbackReason: outcome.reason,
+    };
   }
 
   async draftRecoveryMessage(
     customer: Customer,
     decision: Decision,
-  ): Promise<string> {
+  ): Promise<LlmResult> {
     const prompt = [
       "Write a short, friendly customer-facing message for the situation below.",
       "Be empathetic and never accusatory. 2-3 sentences.",
@@ -173,18 +237,35 @@ export class OpenRouterAdapter implements LlmAdapter {
     ]
       .filter(Boolean)
       .join("\n");
-    const text = await this.complete(prompt);
-    return text ?? this.fallback.draftRecoveryMessageSync(customer, decision);
+    const outcome = await this.complete(prompt);
+    if (outcome.ok) {
+      return { text: outcome.content, source: "openrouter", model: outcome.model };
+    }
+    return {
+      text: this.fallback.draftRecoveryMessageSync(customer, decision),
+      source: "deterministic",
+      model: this.config.model,
+      fallbackReason: outcome.reason,
+    };
   }
 
   /**
-   * Call the OpenRouter chat completions endpoint. Returns the message content,
-   * or `undefined` on any failure (caller falls back deterministically).
+   * Call the OpenRouter chat completions endpoint. Returns a structured outcome
+   * describing success (content + the model the API actually used) or failure
+   * (with a NON-SECRET reason). On any failure the caller degrades to the
+   * deterministic fallback while honestly reporting source "deterministic".
+   *
+   * Security: this method NEVER logs or returns the API key, request/response
+   * headers, request/response bodies, or the prompt (which may reference
+   * customer data). Only the HTTP status or a safe error message is surfaced.
    */
-  private async complete(prompt: string): Promise<string | undefined> {
-    if (!this.config.apiKey) return undefined;
+  private async complete(prompt: string): Promise<CompletionOutcome> {
+    if (!this.config.apiKey) {
+      return { ok: false, reason: "no API key configured" };
+    }
+    let res: Response;
     try {
-      const res = await this.fetchImpl(`${this.config.baseUrl}/chat/completions`, {
+      res = await this.fetchImpl(`${this.config.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.config.apiKey}`,
@@ -196,14 +277,53 @@ export class OpenRouterAdapter implements LlmAdapter {
           temperature: 0.3,
         }),
       });
-      if (!res.ok) return undefined;
-      const data = (await res.json()) as ChatCompletionResponse;
-      const content = data.choices?.[0]?.message?.content?.trim();
-      return content && content.length > 0 ? content : undefined;
-    } catch {
-      // Network / parse error — degrade silently to the deterministic fallback.
-      return undefined;
+    } catch (err) {
+      // Network / DNS / abort error. Use only the safe error message — never
+      // the prompt, key, or any request detail.
+      const safeMessage = err instanceof Error ? err.message : "unknown error";
+      const reason = `network error: ${safeMessage}`;
+      this.warnFailure(reason);
+      return { ok: false, reason };
     }
+
+    if (!res.ok) {
+      // Report only the HTTP status. Do NOT read/log the response body (may
+      // echo request content) or headers.
+      const reason = `HTTP ${res.status}`;
+      this.warnFailure(reason);
+      return { ok: false, reason };
+    }
+
+    let data: ChatCompletionResponse;
+    try {
+      data = (await res.json()) as ChatCompletionResponse;
+    } catch {
+      const reason = "invalid response JSON";
+      this.warnFailure(reason);
+      return { ok: false, reason };
+    }
+
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content || content.length === 0) {
+      const reason = "empty completion";
+      this.warnFailure(reason);
+      return { ok: false, reason };
+    }
+    // Prefer the model the API actually used (routing aliases like
+    // "openrouter/free" may resolve to a concrete model), else the configured one.
+    const model =
+      typeof data.model === "string" && data.model.length > 0
+        ? data.model
+        : this.config.model;
+    return { ok: true, content, model };
+  }
+
+  /** Log a non-secret diagnostic for an OpenRouter failure. */
+  private warnFailure(reason: string): void {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `OpenRouter call failed (source=deterministic fallback): ${reason}`,
+    );
   }
 }
 

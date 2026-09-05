@@ -8,7 +8,32 @@
  * deterministic / simulation fallbacks.
  */
 
-import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
+
+/**
+ * Load the single canonical `.env` at the repository root, regardless of the
+ * current working directory.
+ *
+ * The bug this fixes: a bare `import "dotenv/config"` resolves `.env` from
+ * `process.cwd()`. When the server is started via `npm run dev:server` the cwd
+ * is `server/`, so dotenv looked for a nonexistent `server/.env` and missed the
+ * canonical repo-root `.env`.
+ *
+ * The fix: resolve the `.env` path from THIS module's location rather than the
+ * cwd. At runtime this module lives at either `server/src/config.ts` (run
+ * directly via the TS register hook) or `server/dist/config.js` (compiled). In
+ * both cases the repository root is exactly two directory levels up
+ * (server/src -> server -> root, and server/dist -> server -> root). This makes
+ * configuration loading robust and cross-platform.
+ *
+ * Standard dotenv precedence is preserved: real variables already present in
+ * `process.env` are NOT overridden by the file (no `override: true`).
+ */
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRootEnvPath = path.resolve(moduleDir, "..", "..", ".env");
+dotenv.config({ path: repoRootEnvPath });
 
 export type RazorpayMode = "simulation" | "live";
 

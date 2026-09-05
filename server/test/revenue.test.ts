@@ -133,6 +133,18 @@ describe("summariseRevenue — priority ordering", () => {
       expect(priorities[i - 1]).toBeGreaterThan(priorities[i]!);
     }
   });
+
+  it("passes through the stored recommendedAction for priority rows (no ranking change)", () => {
+    const byCustomer = new Map(
+      summary.highestPriorityCustomers.map((c) => [c.customerId, c]),
+    );
+    // c3 (RESTRICT) had recommendedAction update_payment_method in the fixture.
+    expect(byCustomer.get("c3")?.recommendedAction).toBe("update_payment_method");
+    // c2 (INTERVENE) had recommendedAction retry.
+    expect(byCustomer.get("c2")?.recommendedAction).toBe("retry");
+    // c4 (SUSPEND) had no recommendedAction, so the field stays absent.
+    expect(byCustomer.get("c4")?.recommendedAction).toBeUndefined();
+  });
 });
 
 describe("summariseRevenue — predicted failures on upcoming renewals", () => {

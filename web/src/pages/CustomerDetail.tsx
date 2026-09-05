@@ -82,6 +82,9 @@ export function CustomerDetail({ id }: { id: string }) {
   const patternOverBand =
     restrictive && (data.riskBand === "low" || data.riskBand === "medium");
 
+  const recover = data.decision === "RECOVER" || data.decision === "INTERVENE";
+  const atStake = data.subscription?.amount;
+
   return (
     <div className="page">
       <div className="page-head">
@@ -131,6 +134,65 @@ export function CustomerDetail({ id }: { id: string }) {
           </div>
         </div>
       </section>
+
+      {/* Revenue framing: recovery decision vs leakage-prevention/restriction. */}
+      {data.decision ? (
+        <section
+          className={`recovery-frame recovery-frame-${recover ? "recover" : "restrict"}`}
+        >
+          {recover ? (
+            <>
+              <div className="recovery-frame-title">
+                Revenue recovery decision
+              </div>
+              <p>
+                <strong>{data.decision}</strong>
+                {data.recommendedAction ? (
+                  <>
+                    {" "}
+                    — Recommended action:{" "}
+                    <strong>{titleize(data.recommendedAction)}</strong>
+                  </>
+                ) : null}
+                {atStake !== undefined ? (
+                  <>
+                    {" "}
+                    · Potential revenue recovered:{" "}
+                    <strong>{formatMoney(atStake, currency)}</strong>
+                  </>
+                ) : null}
+              </p>
+              <p className="muted small">
+                This customer is prioritized for recovery — repeated failure does
+                not automatically mean abuse. Recovery is recommended because the
+                behavioural evidence below points to a genuine payment issue, not
+                value extraction.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="recovery-frame-title">
+                Revenue leakage prevention · access restriction
+              </div>
+              <p>
+                <strong>{data.decision}</strong> restricts access to prevent
+                further revenue leakage
+                {atStake !== undefined ? (
+                  <>
+                    {" "}
+                    on <strong>{formatMoney(atStake, currency)}</strong> at stake
+                  </>
+                ) : null}
+                . This is a <strong>restriction</strong> decision, distinct from a
+                revenue-recovery attempt.
+                {blacklist
+                  ? " Blacklist is recommended for human review, never auto-applied."
+                  : ""}
+              </p>
+            </>
+          )}
+        </section>
+      ) : null}
 
       {patternOverBand ? (
         <p className="note">
@@ -187,8 +249,13 @@ export function CustomerDetail({ id }: { id: string }) {
         </section>
       </div>
 
-      <section className="card">
-        <h2>Why this decision — evidence</h2>
+      <section className="card decision-engine">
+        <h2>Decision engine — behavioural evidence</h2>
+        <p className="muted small">
+          These are the deterministic signals the engine weighed to reach the{" "}
+          <strong>{data.decision ?? "—"}</strong> decision above. The AI does not
+          contribute to this section.
+        </p>
         {data.evidence.length === 0 ? (
           <p className="muted">No evidence recorded.</p>
         ) : (
@@ -295,23 +362,50 @@ export function CustomerDetail({ id }: { id: string }) {
         </section>
       </div>
 
-      <section className="card">
-        <h2>Explain &amp; drafted recovery message</h2>
+      <section className="card ai-explanation">
+        <h2>AI explanation &amp; drafted recovery message</h2>
         <p className="muted">
-          Generates a human-readable narrative from the decision evidence. Uses
-          OpenRouter when a key is configured, otherwise a deterministic
-          fallback. This text is explanatory only and never changes the
+          The <strong>decision engine</strong> above (risk score, behavioural
+          evidence and final outcome) is fully deterministic. The AI only{" "}
+          <strong>phrases</strong> that decision into a human-readable narrative
+          and a drafted customer message — it never makes or changes the
           decision.
         </p>
         <button className="btn" onClick={runExplain} disabled={explaining}>
-          {explaining ? "Generating…" : "Explain this decision"}
+          {explaining ? "Generating…" : "Generate AI explanation"}
         </button>
         {explainError ? <p className="error-inline">{explainError}</p> : null}
         {explain ? (
           <div className="explain">
-            <div className="explain-badge">
-              <Badge tone="neutral">source: {explain.source}</Badge>
+            <div className="explain-source">
+              {explain.source === "openrouter" ? (
+                <>
+                  <Badge tone="recover">AI source: OpenRouter</Badge>
+                  <span className="muted small">
+                    Model: <code>{explain.model}</code>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Badge tone="neutral">AI source: Deterministic fallback</Badge>
+                  <span className="muted small">
+                    Model: <code>{explain.model}</code>
+                    {explain.fallbackReason ? (
+                      <>
+                        {" "}
+                        · Reason: <strong>{explain.fallbackReason}</strong>
+                      </>
+                    ) : null}
+                  </span>
+                </>
+              )}
             </div>
+            {explain.source === "deterministic" ? (
+              <p className="note small">
+                No live LLM text was used for this narrative. The text below was
+                produced by the deterministic explainer, not generated by an LLM.
+              </p>
+            ) : null}
             <h3>Explanation</h3>
             <p className="explain-text">{explain.explanation}</p>
             <h3>Drafted recovery message</h3>

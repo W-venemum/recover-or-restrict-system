@@ -194,12 +194,73 @@ code {
   margin-top: 4px;
 }
 
+.metric-grid-secondary {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+/* Runtime mode indicators (Payment mode / AI mode / Model) */
+.mode-strip {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  margin-bottom: 20px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.mode-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.mode-key {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.mode-value {
+  font-size: 12px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color: var(--text);
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 18px;
   margin-bottom: 20px;
+}
+
+/* Revenue framing block (recovery decision vs leakage prevention) */
+.recovery-frame {
+  padding: 14px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-left: 6px solid var(--neutral);
+  background: var(--panel);
+  margin: -8px 0 20px;
+}
+.recovery-frame p {
+  margin: 6px 0 0;
+}
+.recovery-frame-recover {
+  border-left-color: var(--recover);
+  background: linear-gradient(90deg, var(--recover-bg), var(--panel));
+}
+.recovery-frame-restrict {
+  border-left-color: var(--restrict);
+  background: linear-gradient(90deg, var(--restrict-bg), var(--panel));
+}
+.recovery-frame-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
 }
 
 .two-col {
@@ -588,6 +649,19 @@ code {
 }
 .explain-badge {
   margin-bottom: 8px;
+}
+.explain-source {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.ai-explanation {
+  border-left: 4px solid var(--accent);
+}
+.decision-engine {
+  border-left: 4px solid var(--recover);
 }
 
 /* Review controls */
